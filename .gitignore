@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/
+.env
+*.db*
+coverage/
+.env.*
+!.env.example
+*.env
+!*.env.example
+backups/

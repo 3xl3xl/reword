@@ -1,0 +1,6 @@
+{
+  email {$ACME_EMAIL}
+}
+{$REWORD_DOMAIN} {
+  reverse_proxy reword:3000
+}
