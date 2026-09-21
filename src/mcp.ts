@@ -1,3 +1,4 @@
+import { quizAnswerSchema } from "./quiz.js";
 import type { LearningApi } from "./learning-api.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -173,6 +174,36 @@ export function createMcp(service: LearningApi) {
         max_conversation_items: 3,
         pronunciation_evaluation: false,
       })),
+  );
+  server.registerTool(
+    "start_quiz",
+    {
+      description:
+        "Start or resume the user's persisted quiz (up to 3 due items). Scheduled runs at 08:00 and 22:00 Asia/Tokyo should call this. Repeated calls resume the same unfinished quiz; completed slots are not repeated. Show only current.prompt, never expected_answer_for_grading_only before an answer. If null, no eligible due words. Do not invent questions or claim notifications were delivered.",
+      inputSchema: {},
+      annotations: write,
+    },
+    () => safe(() => service.startQuiz()),
+  );
+  server.registerTool(
+    "get_quiz",
+    {
+      description:
+        "Resume quiz state from any chat. Show only the current question; expected_answer_for_grading_only is private grading guidance, not a hint to display. Completed quiz results may be shown.",
+      inputSchema: {},
+      annotations: readOnly,
+    },
+    () => safe(() => service.getQuiz()),
+  );
+  server.registerTool(
+    "answer_quiz",
+    {
+      description:
+        "Save the user's actual answer to the current question atomically with progress. Assess against expected answer: prompted for correct or a valid equivalent, incorrect for a clear mistake. Never fabricate answers or assess uncertain answers. Do not separately call record_usage. Explain the result briefly then show only the returned next prompt, without its expected answer. Retry identical input safely.",
+      inputSchema: quizAnswerSchema.shape,
+      annotations: write,
+    },
+    (input) => safe(() => service.answerQuiz(input)),
   );
   return server;
 }

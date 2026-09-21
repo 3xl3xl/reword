@@ -1,3 +1,4 @@
+import { quizAnswerSchema, quizSlot, quizView, type Quiz } from "./quiz.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { normalize, schedule, type Item } from "./domain.js";
@@ -243,6 +244,76 @@ export class LearningService {
       this.repo.put(updated);
       this.repo.addEvent({ ...data, created_at: now.toISOString() });
       return updated;
+    });
+  }
+  getQuiz() {
+    return quizView(this.repo.getQuiz());
+  }
+  startQuiz() {
+    return this.repo.transaction(() => {
+      const now = this.clock();
+      const previous = this.repo.getQuiz();
+      const slot = quizSlot(now);
+      if (
+        previous &&
+        (previous.questions.some((q) => q.answer === undefined) ||
+          previous.slot === slot)
+      )
+        return quizView(previous);
+      const items = this.due(50)
+        .filter((i) => i.meaning_ja || i.meaning_en)
+        .slice(0, 3);
+      if (!items.length) return null;
+      const quiz: Quiz = {
+        id: randomUUID(),
+        slot,
+        created_at: now.toISOString(),
+        questions: items.map((item) => ({
+          id: randomUUID(),
+          item_id: item.id,
+          prompt: `「${item.meaning_ja || item.meaning_en}」を表す、保存した英語は？`,
+          expected: item.text,
+        })),
+      };
+      this.repo.putQuiz(quiz);
+      return quizView(quiz);
+    });
+  }
+  answerQuiz(input: z.input<typeof quizAnswerSchema>) {
+    const data = quizAnswerSchema.parse(input);
+    return this.repo.transaction(() => {
+      const quiz = this.repo.getQuiz();
+      if (!quiz || quiz.id !== data.quiz_id) throw new Error("Quiz not found.");
+      const question = quiz.questions.find((q) => q.id === data.question_id);
+      if (!question) throw new Error("Question not found.");
+      if (question.answer !== undefined) {
+        if (
+          question.answer !== data.answer ||
+          question.outcome !== data.outcome
+        )
+          throw new Error("Question already answered differently.");
+        return quizView(quiz);
+      }
+      if (
+        quiz.questions.find((q) => q.answer === undefined)?.id !== question.id
+      )
+        throw new Error("Answer the current question first.");
+      const item = this.repo.find(question.item_id);
+      if (!item) throw new Error("Learning item not found.");
+      const now = this.clock();
+      this.repo.put(schedule(item, data.outcome, now));
+      this.repo.addEvent({
+        event_id: question.id,
+        item_id: item.id,
+        outcome: data.outcome,
+        context: data.answer,
+        created_at: now.toISOString(),
+      });
+      question.answer = data.answer;
+      question.outcome = data.outcome;
+      question.answered_at = now.toISOString();
+      this.repo.putQuiz(quiz);
+      return quizView(quiz);
     });
   }
   healthy() {

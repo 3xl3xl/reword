@@ -1,3 +1,4 @@
+import type { Quiz } from "../quiz.js";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -23,6 +24,9 @@ export class SqliteRepository implements Repository {
     );
     this.db.exec(
       `CREATE TABLE IF NOT EXISTS migrations(version INTEGER PRIMARY KEY);`,
+    );
+    this.db.exec(
+      "CREATE TABLE IF NOT EXISTS tenant_quizzes(owner TEXT PRIMARY KEY, data TEXT NOT NULL)",
     );
     this.transaction(() => {
       if (
@@ -124,6 +128,20 @@ export class SqliteRepository implements Repository {
       )
       .all(this.owner, id)
       .map((row) => this.decode<Usage>(row)!);
+  }
+  getQuiz() {
+    return this.decode<Quiz>(
+      this.db
+        .prepare("SELECT data FROM tenant_quizzes WHERE owner=?")
+        .get(this.owner),
+    );
+  }
+  putQuiz(quiz: Quiz) {
+    this.db
+      .prepare(
+        "INSERT INTO tenant_quizzes VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET data=excluded.data",
+      )
+      .run(this.owner, JSON.stringify(quiz));
   }
   healthy() {
     return !!this.db.prepare("SELECT 1").get();

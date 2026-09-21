@@ -89,6 +89,9 @@ export class PostgresStore {
       }
     };
     return {
+      getQuiz: (...args) => invoke("getQuiz", args),
+      startQuiz: (...args) => invoke("startQuiz", args, true),
+      answerQuiz: (...args) => invoke("answerQuiz", args, true),
       save: (...args) => invoke("save", args, true),
       update: (...args) => invoke("update", args, true),
       record: (...args) => invoke("record", args, true),

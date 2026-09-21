@@ -1,6 +1,8 @@
+import type { Quiz } from "../quiz.js";
 import type { Item, Usage } from "../domain.js";
 import type { Repository } from "./repository.js";
 export interface Snapshot {
+  quiz?: Quiz;
   version: 1;
   items: Item[];
   events: Usage[];
@@ -60,6 +62,12 @@ export class SnapshotRepository implements Repository {
         .slice(-100)
         .reverse(),
     );
+  }
+  getQuiz() {
+    return structuredClone(this.state.quiz);
+  }
+  putQuiz(quiz: Quiz) {
+    this.state.quiz = structuredClone(quiz);
   }
   healthy() {
     return true;

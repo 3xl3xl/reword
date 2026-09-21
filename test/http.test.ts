@@ -27,7 +27,7 @@ test("real Streamable HTTP client completes learning loop and HTTP enforces boun
     assert.deepEqual(await smoke(`${base}/mcp`, token), {
       health: "ok",
       mcp: "ok",
-      tools: 12,
+      tools: 15,
       authenticated: true,
     });
     assert.equal(new LearningService(repo).stats().total, 0);
@@ -64,7 +64,7 @@ test("real Streamable HTTP client completes learning loop and HTTP enforces boun
         requestInit: { headers: { Authorization: `Bearer ${token}` } },
       }),
     );
-    assert.equal((await client.listTools()).tools.length, 12);
+    assert.equal((await client.listTools()).tools.length, 15);
     async function call(name: string, args: Record<string, unknown> = {}) {
       const result = await client.callTool({ name, arguments: args });
       assert.ok(!result.isError, JSON.stringify(result));
