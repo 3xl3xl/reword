@@ -8,7 +8,13 @@ import {
   updateSchema,
   correctionQuerySchema,
 } from "./service.js";
-export const instructions = `RE:WORD helps users learn English through ordinary conversation. Conversation comes first. Save only on request; resolve "save that" from conversation context, asking briefly if ambiguous. Supply meanings and the original context; never invent context. Occasionally retrieve at most three relevant due items. It is fine to use none. Reuse them naturally, never force unrelated words or turn every conversation into a quiz. Avoid teaching interruptions during emotional, serious, or important discussions. Record exposure only after actually showing an item. Record independent success only for the user's own clearly correct usage, not your wording, quotations, recognition, or prompted repetition. Record clear mistakes with a lightweight correction when helpful; do not penalize uncertain judgments. Store personal corrections with consent. Use a fresh UUID event_id for each observed event and reuse it on retries. Text transcripts cannot establish pronunciation quality.`;
+const savedReplyInstructions = `After this save succeeds, especially when the user says "save that", reply with exactly these four lines and no extra commentary:
+**Saved:** [word/expression]
+**Meaning:** [natural meaning in the user's original language]
+**類語:** [2–4 natural English synonyms or similar expressions]
+**Example:** [one natural English sentence based on the user's actual daily-life context]
+Use the saved item's text. Keep every line concise. Infer the user's original language from the conversation; do not assume Japanese just because the label is 類語. Prioritize the current conversation context over a generic dictionary example. Use only context the user actually supplied; do not invent personal details. If no daily-life context is available, use a neutral everyday sentence without claiming it is a fact about the user. Never announce a save until the tool succeeds, and never use this success format for a failed save.`;
+export const instructions = `RE:WORD helps users learn English through ordinary conversation. Conversation comes first. Save only on request; resolve "save that" from conversation context, asking briefly if ambiguous. Supply meanings and the original context; never invent context. Occasionally retrieve at most three relevant due items. It is fine to use none. Reuse them naturally, never force unrelated words or turn every conversation into a quiz. Avoid teaching interruptions during emotional, serious, or important discussions. Record exposure only after actually showing an item. Record independent success only for the user's own clearly correct usage, not your wording, quotations, recognition, or prompted repetition. Record clear mistakes with a lightweight correction when helpful; do not penalize uncertain judgments. Store personal corrections with consent. Use a fresh UUID event_id for each observed event and reuse it on retries. Text transcripts cannot establish pronunciation quality. ${savedReplyInstructions}`;
 export function createMcp(service: LearningApi) {
   const server = new McpServer(
     { name: "reword", version: "0.1.0" },
@@ -28,9 +34,13 @@ export function createMcp(service: LearningApi) {
   const response = (value: unknown) => ({
     content: [{ type: "text" as const, text: JSON.stringify(value) }],
   });
-  const safe = async (work: () => unknown) => {
+  const safe = async (work: () => unknown, successGuidance?: string) => {
     try {
-      return response(await work());
+      const result = response(await work());
+      if (successGuidance) {
+        result.content.push({ type: "text", text: successGuidance });
+      }
+      return result;
     } catch (error) {
       return {
         ...response({
@@ -44,11 +54,12 @@ export function createMcp(service: LearningApi) {
     server.registerTool(
       `save_${type}`,
       {
-        description: `Save a requested English ${type}; repeated saves preserve existing progress.`,
+        description: `Save a requested English ${type}; repeated saves preserve existing progress. ${savedReplyInstructions}`,
         inputSchema: saveSchema.omit({ type: true, category: true }).shape,
         annotations: write,
       },
-      (input) => safe(() => service.save({ ...input, type })),
+      (input) =>
+        safe(() => service.save({ ...input, type }), savedReplyInstructions),
     );
   }
   server.registerTool(
@@ -59,7 +70,11 @@ export function createMcp(service: LearningApi) {
       inputSchema: saveSchema.omit({ type: true }).shape,
       annotations: write,
     },
-    (input) => safe(() => service.save({ ...input, type: "correction" })),
+    (input) =>
+      safe(
+        () => service.save({ ...input, type: "correction" }),
+        savedReplyInstructions,
+      ),
   );
   server.registerTool(
     "update_learning_item",
