@@ -57,6 +57,14 @@ Corrections are first-class learning items, so they use the same review and usag
 
 The host model resolves “save that,” supplies meanings, assesses text usage, and decides whether a suggestion fits. The service does not run an LLM, monitor conversations, or automatically inject messages. MCP instructions tell the host to prioritize the discussion, avoid teaching interruptions in serious conversations, get consent for personal corrections, and never infer pronunciation quality from text. A connected host must actually call the tools for this loop to operate.
 
+### Persisted quizzes
+
+`start_quiz` creates up to three due questions with saved meanings, or resumes the current unfinished quiz. `get_quiz` reads the same state from another chat. `answer_quiz` stores a real user answer and its assessed outcome atomically with the learning event; identical retries cannot double-count progress and conflicting or out-of-order answers fail.
+
+The server groups practice into 08:00 and 22:00 Asia/Tokyo slots. A completed quiz is not recreated in the same slot. An unfinished quiz carries over to the next slot. Only the current quiz is retained; learning events remain in item history. Questions snapshot the stored meaning and expected expression, so later vocabulary edits do not change an in-progress question. Items without meanings are skipped. The host must hide the grading answer until the user responds and must not fabricate answers.
+
+State lives in the authenticated user's Postgres JSONB snapshot (or the local SQLite tenant quiz table), not in a chat session. These tools do not schedule jobs or send push notifications themselves: an independently configured ChatGPT scheduled task must call `start_quiz`, and delivery depends on ChatGPT and device notification settings.
+
 ### V1 scheduling
 
 New items are immediately due, with mastery 0. Scores are clamped to 0–100.
