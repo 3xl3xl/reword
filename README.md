@@ -4,6 +4,10 @@
 
 A small English-learning MCP service with local and OAuth-authenticated modes: save → store → retrieve → reuse → record usage → update mastery → schedule reappearance. No separate study UI is required.
 
+## Product design and specification
+
+The conversation-based product brief and detailed requirements are documented in [Product README](docs/product/README.md) and [PRODUCT_SPEC](docs/product/PRODUCT_SPEC.md). They cover Sentence Blocks, audio, drag-and-drop, Personal / Hard learning content, and scheduling requirements. These documents capture product intent; the implementation details below remain the reference for the current service.
+
 ## Run locally
 
 Requires Node.js 22.16+ and npm. Node 22's built-in SQLite emits an experimental warning; no native third-party database package is needed.
