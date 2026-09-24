@@ -1,3 +1,7 @@
+import {
+  lessonSchema,
+  sessionActionSchema,
+} from "./features/sentence-blocks/domain.js";
 import { quizAnswerSchema } from "./quiz.js";
 import type { LearningApi } from "./learning-api.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -15,7 +19,7 @@ const savedReplyInstructions = `After this save succeeds, especially when the us
 **類語:** [2–4 natural English synonyms or similar expressions]
 **Example:** [one natural English sentence based on the user's actual daily-life context]
 Use the saved item's text. Keep every line concise. Infer the user's original language from the conversation; do not assume Japanese just because the label is 類語. Prioritize the current conversation context over a generic dictionary example. Use only context the user actually supplied; do not invent personal details. If no daily-life context is available, use a neutral everyday sentence without claiming it is a fact about the user. Never announce a save until the tool succeeds, and never use this success format for a failed save.`;
-export const instructions = `RE:WORD helps users learn English through ordinary conversation. Conversation comes first. Save only on request; resolve "save that" from conversation context, asking briefly if ambiguous. Supply meanings and the original context; never invent context. Occasionally retrieve at most three relevant due items. It is fine to use none. Reuse them naturally, never force unrelated words or turn every conversation into a quiz. Avoid teaching interruptions during emotional, serious, or important discussions. Record exposure only after actually showing an item. Record independent success only for the user's own clearly correct usage, not your wording, quotations, recognition, or prompted repetition. Record clear mistakes with a lightweight correction when helpful; do not penalize uncertain judgments. Store personal corrections with consent. Use a fresh UUID event_id for each observed event and reuse it on retries. Text transcripts cannot establish pronunciation quality. ${savedReplyInstructions}`;
+export const instructions = `RE:WORD helps users learn English through ordinary conversation. Conversation comes first. Save only on request; resolve "save that" from conversation context, asking briefly if ambiguous. Supply meanings, synonyms, a contextual example, and the original context; never invent context. Occasionally retrieve at most three relevant due items. It is fine to use none. Reuse them naturally, never force unrelated words or turn every conversation into a quiz. Avoid teaching interruptions during emotional, serious, or important discussions. Record exposure only after actually showing an item. Record independent success only for the user's own clearly correct usage, not your wording, quotations, recognition, or prompted repetition. Record clear mistakes with a lightweight correction when helpful; do not penalize uncertain judgments. Store personal corrections with consent. Use a fresh UUID event_id for each observed event and reuse it on retries. Text transcripts cannot establish pronunciation quality. ${savedReplyInstructions}`;
 export function createMcp(service: LearningApi) {
   const server = new McpServer(
     { name: "reword", version: "0.1.0" },
@@ -204,6 +208,36 @@ export function createMcp(service: LearningApi) {
       annotations: write,
     },
     (input) => safe(() => service.answerQuiz(input)),
+  );
+  server.registerTool(
+    "prepare_sentence_blocks",
+    {
+      description:
+        "Prepare 5 Japanese-prompt sentence ordering questions from real saved items and user-supplied topics. Each question links existing item_ids. Supply blocks in correct order; never invent personal facts. Resume an unfinished session. This does not record usage. Open /learn to practice.",
+      inputSchema: lessonSchema.shape,
+      annotations: write,
+    },
+    (input) => safe(() => service.prepareSentences(input)),
+  );
+  server.registerTool(
+    "get_sentence_blocks",
+    {
+      description:
+        "Read persisted Sentence Blocks state. No solution is returned before success.",
+      inputSchema: {},
+      annotations: readOnly,
+    },
+    () => safe(() => service.getSentences()),
+  );
+  server.registerTool(
+    "answer_sentence_blocks",
+    {
+      description:
+        "Persist the user's actual selected block IDs, check their order, or advance a solved sentence. Read latest state first. Never supply an answer for the user. Learning events are recorded atomically; do not also record_usage.",
+      inputSchema: sessionActionSchema.shape,
+      annotations: write,
+    },
+    (input) => safe(() => service.sentenceAction(input)),
   );
   return server;
 }

@@ -1,3 +1,11 @@
+import {
+  lessonSchema,
+  sessionActionSchema,
+  makeSession,
+  sentenceView,
+  sentenceText,
+} from "./features/sentence-blocks/domain.js";
+import { lessons } from "./features/sentence-blocks/lessons.js";
 import { quizAnswerSchema, quizSlot, quizView, type Quiz } from "./quiz.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -7,6 +15,8 @@ const text = z.string().trim().min(1).max(2000);
 export const saveSchema = z.object({
   text: text.max(200),
   type: z.enum(["word", "expression", "correction"]),
+  synonyms: z.array(z.string().trim().min(1).max(200)).max(10).default([]),
+  example: z.string().trim().max(2000).default(""),
   meaning_en: z.string().trim().max(2000).default(""),
   meaning_ja: z.string().max(2000).default(""),
   original_context: z.string().max(4000).default(""),
@@ -28,6 +38,8 @@ export const updateSchema = z.object({
   changes: z
     .object({
       text: saveSchema.shape.text,
+      synonyms: saveSchema.shape.synonyms.removeDefault(),
+      example: saveSchema.shape.example.removeDefault(),
       meaning_en: z.string().trim().max(2000),
       meaning_ja: saveSchema.shape.meaning_ja.removeDefault(),
       original_context: saveSchema.shape.original_context.removeDefault(),
@@ -71,31 +83,29 @@ export class LearningService {
     const data = saveSchema.parse(input);
     if (data.type === "correction" && !data.original_sentence.trim())
       throw new Error("Corrections require the original sentence.");
-    return this.repo.transaction(() => {
-      const existing = this.repo.findNormalized(
-        normalize(data.text),
-        data.type,
-      );
-      if (existing) return existing;
-      const now = this.clock().toISOString();
-      const item: Item = {
-        ...data,
-        id: randomUUID(),
-        normalized_text: normalize(data.text),
-        mastery_score: 0,
-        successful_uses: 0,
-        failed_uses: 0,
-        interval_hours: 0,
-        status: "learning",
-        last_seen_at: null,
-        last_used_at: null,
-        next_review_at: now,
-        created_at: now,
-        updated_at: now,
-      };
-      this.repo.put(item);
-      return item;
-    });
+    return this.repo.transaction(() => this.saveItem(data));
+  }
+  private saveItem(data: z.output<typeof saveSchema>): Item {
+    const existing = this.repo.findNormalized(normalize(data.text), data.type);
+    if (existing) return existing;
+    const now = this.clock().toISOString();
+    const item: Item = {
+      ...data,
+      id: randomUUID(),
+      normalized_text: normalize(data.text),
+      mastery_score: 0,
+      successful_uses: 0,
+      failed_uses: 0,
+      interval_hours: 0,
+      status: "learning",
+      last_seen_at: null,
+      last_used_at: null,
+      next_review_at: now,
+      created_at: now,
+      updated_at: now,
+    };
+    this.repo.put(item);
+    return item;
   }
   update(input: z.input<typeof updateSchema>): Item {
     const { item_id, changes } = updateSchema.parse(input);
@@ -314,6 +324,132 @@ export class LearningService {
       question.answered_at = now.toISOString();
       this.repo.putQuiz(quiz);
       return quizView(quiz);
+    });
+  }
+  getSentences() {
+    return sentenceView(this.repo.getSentences());
+  }
+  prepareSentences(input: z.input<typeof lessonSchema>) {
+    const data = lessonSchema.parse(input);
+    return this.repo.transaction(() => {
+      const previous = this.repo.getSentences();
+      if (previous && previous.index < 5) return sentenceView(previous);
+      for (const question of data.questions)
+        for (const id of question.item_ids)
+          if (!this.repo.find(id)) throw new Error("Learning item not found.");
+      const session = makeSession(data, this.clock());
+      this.repo.putSentences(session);
+      return sentenceView(session);
+    });
+  }
+  startStarterSentences(mode: "personal" | "hard") {
+    z.enum(["personal", "hard"]).parse(mode);
+    return this.repo.transaction(() => {
+      const previous = this.repo.getSentences();
+      if (previous && previous.index < 5) return sentenceView(previous);
+      const questions = lessons[mode].map(([topic, prompt, blocks]) => {
+        const sentence = blocks.join(" ");
+        const expression = this.saveItem(
+          saveSchema.parse({
+            text: sentence,
+            type: "expression",
+            meaning_ja: prompt,
+            example: sentence,
+            original_context: "User-selected practice theme: " + topic,
+          }),
+        );
+        // Link only actual saved words occurring in this sentence (including scatter/scattered).
+        const related = this.repo.list().filter(
+          (i) =>
+            i.id !== expression.id &&
+            i.type === "word" &&
+            i.text.length > 2 &&
+            sentence
+              .toLowerCase()
+              .split(/[^a-z]+/)
+              .some(
+                (w) =>
+                  w === i.normalized_text ||
+                  w === i.normalized_text + "ed" ||
+                  w === i.normalized_text + "s",
+              ),
+        );
+        return {
+          topic,
+          prompt,
+          blocks,
+          item_ids: [expression.id, ...related.slice(0, 4).map((i) => i.id)],
+        };
+      });
+      const session = makeSession({ mode, questions }, this.clock());
+      this.repo.putSentences(session);
+      return sentenceView(session);
+    });
+  }
+  sentenceAction(input: z.input<typeof sessionActionSchema>) {
+    const data = sessionActionSchema.parse(input);
+    return this.repo.transaction(() => {
+      const session = this.repo.getSentences();
+      if (!session || session.id !== data.session_id)
+        throw new Error("Session not found.");
+      const payload = JSON.stringify(data);
+      if (session.last_request?.id === data.request_id) {
+        if (session.last_request.payload !== payload)
+          throw new Error("Request already used differently.");
+        return sentenceView(session);
+      }
+      if (session.revision !== data.revision)
+        throw new Error("Session changed. Reload to continue.");
+      const q = session.questions[session.index];
+      if (!q || q.id !== data.question_id)
+        throw new Error("Answer the current question first.");
+      if (data.action === "next") {
+        if (!q.correct) throw new Error("Complete this sentence first.");
+        session.index++;
+      } else {
+        if (q.correct) throw new Error("Sentence already completed.");
+        if (
+          new Set(data.block_ids).size !== data.block_ids.length ||
+          data.block_ids.some((id) => !q.blocks.some((b) => b.id === id))
+        )
+          throw new Error("Invalid blocks.");
+        if (
+          data.action === "check" &&
+          data.block_ids.length !== q.blocks.length
+        )
+          throw new Error("Use every block before checking.");
+        q.draft = data.block_ids;
+        if (data.action === "check") {
+          q.attempts++;
+          const answer = sentenceText(q, q.draft);
+          q.correct = answer === sentenceText(q, q.expected);
+          // Wrong first attempts and eventual recovery are both observable. Repeated wrong checks do not repeatedly penalize.
+          if (q.attempts === 1 || q.correct) {
+            const outcome = q.correct
+              ? q.attempts === 1
+                ? "prompted"
+                : "recognition"
+              : "incorrect";
+            const now = this.clock();
+            for (const id of new Set(q.item_ids)) {
+              const item = this.repo.find(id);
+              if (!item) throw new Error("Learning item not found.");
+              this.repo.put(schedule(item, outcome, now));
+              this.repo.addEvent({
+                event_id: randomUUID(),
+                item_id: id,
+                outcome,
+                context: `Sentence Blocks (${session.id}, ${q.id}): ${answer}`,
+                created_at: now.toISOString(),
+              });
+            }
+          }
+        }
+      }
+      session.revision++;
+      session.last_request = { id: data.request_id, payload };
+      this.repo.putSentences(session);
+      return sentenceView(session);
     });
   }
   healthy() {

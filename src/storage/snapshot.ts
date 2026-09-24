@@ -1,8 +1,10 @@
+import type { SentenceSession } from "../features/sentence-blocks/domain.js";
 import type { Quiz } from "../quiz.js";
 import type { Item, Usage } from "../domain.js";
 import type { Repository } from "./repository.js";
 export interface Snapshot {
   quiz?: Quiz;
+  sentences?: SentenceSession;
   version: 1;
   items: Item[];
   events: Usage[];
@@ -62,6 +64,12 @@ export class SnapshotRepository implements Repository {
         .slice(-100)
         .reverse(),
     );
+  }
+  getSentences() {
+    return structuredClone(this.state.sentences);
+  }
+  putSentences(session: SentenceSession) {
+    this.state.sentences = structuredClone(session);
   }
   getQuiz() {
     return structuredClone(this.state.quiz);

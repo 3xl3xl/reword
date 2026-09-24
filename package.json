@@ -16,7 +16,8 @@
     "format:check": "prettier --check .",
     "check": "npm run format:check && npm run typecheck && npm test && npm run build",
     "smoke": "node --env-file-if-exists=.env --import tsx src/smoke.ts",
-    "db:migrate": "node --env-file-if-exists=.env --import tsx src/migrate.ts"
+    "db:migrate": "node --env-file-if-exists=.env --import tsx src/migrate.ts",
+    "test:ui": "playwright test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
+    "@playwright/test": "^1.63.0",
     "@types/express": "^5.0.6",
     "@types/node": "^22.20.4",
     "@types/pg": "^8.23.1",

@@ -1,5 +1,9 @@
 import type { LearningService } from "./service.js";
 type Method =
+  | "getSentences"
+  | "prepareSentences"
+  | "startStarterSentences"
+  | "sentenceAction"
   | "getQuiz"
   | "startQuiz"
   | "answerQuiz"

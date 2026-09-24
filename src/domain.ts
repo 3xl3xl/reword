@@ -5,6 +5,8 @@ export interface Item {
   text: string;
   normalized_text: string;
   type: "word" | "expression" | "correction";
+  synonyms?: string[];
+  example?: string;
   meaning_en: string;
   meaning_ja: string;
   original_context: string;

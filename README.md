@@ -2,11 +2,21 @@
 
 **Don't study English outside the conversation. Turn the conversation itself into the study.**
 
-A small English-learning MCP service with local and OAuth-authenticated modes: save → store → retrieve → reuse → record usage → update mastery → schedule reappearance. No separate study UI is required.
+A small English-learning MCP service with local and OAuth-authenticated modes: save → store → retrieve → reuse → record usage → update mastery → schedule reappearance. Ordinary conversation remains the primary learning surface; an optional connected practice workspace is available at `/learn/`.
 
 ## Product design and specification
 
 The conversation-based product brief and detailed requirements are documented in [Product README](docs/product/README.md) and [PRODUCT_SPEC](docs/product/PRODUCT_SPEC.md). They cover Sentence Blocks, audio, drag-and-drop, Personal / Hard learning content, and scheduling requirements. These documents capture product intent; the implementation details below remain the reference for the current service.
+
+## Learning workspace
+
+Open **`/learn/`** on the running service for Saved Words, Daily Quiz and five-question Sentence Blocks. The workspace uses the same saved vocabulary, corrections, usage history and spaced repetition as the MCP tools. It supports persistent drafts, Personal / Hard lessons, tap and drag ordering, hints, selected-phrase audio, complete-sentence playback and a full-width Next.
+
+Starter lessons are saved only after the user previews and chooses them. For conversation-based lessons, use `prepare_sentence_blocks` with five prompts and existing saved-item IDs. `get_sentence_blocks` and `answer_sentence_blocks` resume and update the same persisted session. [Implementation and validation details](docs/IMPLEMENTATION.md) describe the API, persistence and remaining extensions.
+
+Locally, start the service and visit `http://127.0.0.1:3000/learn/`. Hosted users currently enter a RE:WORD bearer access token through **接続**; it is kept only in page memory. OpenAI TTS is optional: configure server-side `OPENAI_API_KEY` and `OPENAI_TTS_VOICE` (default `cedar`). Without it, the interface uses an available English device voice. No API key is sent to the browser.
+
+Browser tests: `npx playwright install chromium` followed by `npm run test:ui`. They use a separate test database and synthetic audio stubs.
 
 ## Run locally
 

@@ -89,6 +89,11 @@ export class PostgresStore {
       }
     };
     return {
+      getSentences: (...args) => invoke("getSentences", args),
+      prepareSentences: (...args) => invoke("prepareSentences", args, true),
+      startStarterSentences: (...args) =>
+        invoke("startStarterSentences", args, true),
+      sentenceAction: (...args) => invoke("sentenceAction", args, true),
       getQuiz: (...args) => invoke("getQuiz", args),
       startQuiz: (...args) => invoke("startQuiz", args, true),
       answerQuiz: (...args) => invoke("answerQuiz", args, true),
