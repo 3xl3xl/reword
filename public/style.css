@@ -897,3 +897,12 @@ dialog .quiet {
 .block {
   overflow: hidden;
 }
+
+.data-source {
+  max-width: 1244px;
+  margin: 12px auto 0;
+  padding: 0 20px;
+  color: #947442;
+  font-size: 11px;
+  line-height: 1.6;
+}

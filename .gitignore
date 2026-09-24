@@ -13,3 +13,5 @@ backups/
 
 test-results/
 playwright-report/
+
+public/generated/

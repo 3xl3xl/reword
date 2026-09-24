@@ -129,6 +129,37 @@ test("Postgres SQL learning loop, rollback, idempotency and isolated users", asy
       Promise.resolve(bob.sentenceAction(sentenceDraft)),
       /not found/,
     );
+    const reading = await alice.prepareActivity({
+      mode: "reading",
+      topic: "Feelings",
+      passage: "Anxiety can be creeping in before a presentation.",
+      questions: [
+        {
+          prompt: "What can be creeping in?",
+          item_ids: [item.id],
+          options: ["Anxiety", "Lunch", "Shoes", "Sunlight"],
+          correct_index: 0,
+        },
+      ],
+    });
+    assert.equal(await bob.getActivity("reading"), null);
+    assert.deepEqual(await reopened.getActivity("reading"), reading);
+    const readingAnswer = {
+      mode: "reading" as const,
+      activity_id: reading!.activity_id,
+      question_id: reading!.current!.question_id,
+      answer: reading!.current!.options!.find((o) => o.text === "Anxiety")!.id,
+    };
+    const [firstReading, sameReading] = await Promise.all([
+      alice.answerActivity(readingAnswer),
+      reopened.answerActivity(readingAnswer),
+    ]);
+    assert.deepEqual(firstReading, sameReading);
+    assert.equal(firstReading!.answered, 1);
+    await assert.rejects(
+      Promise.resolve(bob.answerActivity(readingAnswer)),
+      /not found/,
+    );
     const hosts: string[] = [];
     const token = "test-secret-with-at-least-32-characters";
     const server = createApp(alice, { allowedHosts: hosts, token }).listen(

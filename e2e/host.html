@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>RE:WORD MCP Apps test host</title>
+  </head>
+  <body style="margin: 0; background: #eee">
+    <iframe
+      title="RE:WORD"
+      src="/test-widget"
+      style="width: min(100%, 680px); height: 1100px; border: 0"
+    ></iframe>
+    <script>
+      window.sentMessages = [];
+      const frame = document.querySelector("iframe");
+      let nextId = 1;
+      async function tool(name, args = {}) {
+        const response = await fetch("/mcp", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json, text/event-stream",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: nextId++,
+            method: "tools/call",
+            params: { name, arguments: args },
+          }),
+        });
+        const result = await response.json();
+        if (result.error) throw new Error(result.error.message);
+        return result.result;
+      }
+      window.callTestTool = tool;
+      window.deliverTool = async (name, args) =>
+        frame.contentWindow.postMessage(
+          {
+            jsonrpc: "2.0",
+            method: "ui/notifications/tool-result",
+            params: await tool(name, args),
+          },
+          location.origin,
+        );
+      window.addEventListener("message", async (event) => {
+        if (
+          event.source !== frame.contentWindow ||
+          event.origin !== location.origin ||
+          event.data?.jsonrpc !== "2.0"
+        )
+          return;
+        const { id, method, params } = event.data;
+        let result = {};
+        try {
+          if (method === "ui/initialize")
+            result = {
+              protocolVersion: params.protocolVersion,
+              hostInfo: { name: "Test host", version: "1" },
+              hostCapabilities: { serverTools: {}, message: { text: {} } },
+              hostContext: { theme: "light", displayMode: "inline" },
+            };
+          else if (method === "ui/notifications/initialized") {
+            await window.deliverTool("start_today_learning", {});
+            return;
+          } else if (method === "tools/call")
+            result = await tool(params.name, params.arguments);
+          else if (method === "ui/message") window.sentMessages.push(params);
+          else if (method === "ui/notifications/size-changed") {
+            frame.style.height = `${Math.max(800, params.height || 800)}px`;
+            return;
+          }
+          if (id !== undefined)
+            frame.contentWindow.postMessage(
+              { jsonrpc: "2.0", id, result },
+              location.origin,
+            );
+        } catch (error) {
+          if (id !== undefined)
+            frame.contentWindow.postMessage(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: { code: -32603, message: error.message },
+              },
+              location.origin,
+            );
+        }
+      });
+    </script>
+  </body>
+</html>

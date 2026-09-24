@@ -31,6 +31,7 @@ function publicQuiz(quiz: Awaited<ReturnType<LearningApi["getQuiz"]>>) {
 export function learningRouter(
   select: (owner?: string) => LearningApi,
   speech?: SpeechProvider,
+  authenticated = false,
 ) {
   const router = Router();
   // Bounded per-owner speech budget; no client-supplied arbitrary TTS text.
@@ -39,7 +40,12 @@ export function learningRouter(
     res.setHeader("Cache-Control", "no-store");
     next();
   });
-  router.get("/config", (_req, res) => res.json({ speech: Boolean(speech) }));
+  router.get("/config", (_req, res) =>
+    res.json({
+      speech: Boolean(speech),
+      data_source: authenticated ? "connected_account" : "local_preview",
+    }),
+  );
   router.get("/lessons", (_req, res) => res.json(lessons));
   router.use(async (req, res, next) => {
     const owner = req.auth?.extra?.owner;

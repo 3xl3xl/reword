@@ -1,8 +1,10 @@
+import type { DailyState } from "../features/daily/domain.js";
 import type { SentenceSession } from "../features/sentence-blocks/domain.js";
 import type { Quiz } from "../quiz.js";
 import type { Item, Usage } from "../domain.js";
 import type { Repository } from "./repository.js";
 export interface Snapshot {
+  daily?: DailyState;
   quiz?: Quiz;
   sentences?: SentenceSession;
   version: 1;
@@ -70,6 +72,12 @@ export class SnapshotRepository implements Repository {
   }
   putSentences(session: SentenceSession) {
     this.state.sentences = structuredClone(session);
+  }
+  getDaily() {
+    return structuredClone(this.state.daily);
+  }
+  putDaily(state: DailyState) {
+    this.state.daily = structuredClone(state);
   }
   getQuiz() {
     return structuredClone(this.state.quiz);

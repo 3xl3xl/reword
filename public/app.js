@@ -45,6 +45,10 @@ async function navigate(tab) {
     if (tab === "quiz") await showQuiz(version);
     const config = await api.request("/config");
     audio.remote = config.speech;
+    document.querySelector("#data-source").textContent =
+      config.data_source !== "connected_account"
+        ? "開発用プレビュー — ChatGPT版RE:WORDの本番データではありません。"
+        : "接続中のRE:WORDアカウントの学習データ";
     await refreshStats();
   } catch (error) {
     if (version !== generation) return;

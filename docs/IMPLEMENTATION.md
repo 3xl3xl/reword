@@ -1,12 +1,24 @@
-# Learning workspace implementation
+# ChatGPT learning implementation
 
 ## Architecture and reuse
 
 The existing TypeScript/Express MCP service remains the single learning backend. `src/service.ts` owns saving, quizzes, usage events, mastery and review scheduling. `src/storage/repository.ts` is its persistence boundary. SQLite serves local installations; Postgres executes the same service against a locked per-owner snapshot. OAuth continues to select the owner. No separate vocabulary database or grading store has been introduced.
 
-The frontend is a small, same-origin ES-module application served at `/learn/`. It does not require a second framework or build pipeline. Feature boundaries are `public/features/sentences.js`, `public/features/drag.js`, `public/features/audio.js` and `public/features/api.js`. Saved words and the existing daily quiz are connected through `public/app.js`.
+The primary frontend is an embedded MCP Apps widget inside ChatGPT. The same-origin ES-module application at `/learn/` is a development/diagnostic workspace. Feature boundaries are `public/features/sentences.js`, `public/features/drag.js`, `public/features/audio.js` and `public/features/api.js`. Saved words and the existing daily quiz are connected through `public/app.js`.
 
-## Delivered behavior
+## ChatGPT daily entry and production data
+
+Mentioning `@reword` with no further request is described to the host as calling `start_today_learning`. It returns a self-contained MCP Apps resource with five choices: four-choice quiz, Sentence Blocks, reading, themed conversation and writing. Specific save requests keep their existing behavior. Host tool selection must still be verified in a real ChatGPT connection.
+
+The widget calls tools through the MCP Apps bridge using the existing authenticated account. It does not contact localhost, request an access token or seed sample words. Saved vocabulary, usage events and review dates share the existing account repository. Four-choice distractors come from actual saved words; insufficient vocabulary is reported explicitly. Reading, ordering, conversation and writing are prepared by ChatGPT from `get_learning_material` and validated owned item IDs. Topic selection sends an explicit request into the conversation. Free-form answers are assessed by the host using the user's actual answer and only observed vocabulary IDs; listening never counts as speaking.
+
+Daily exercises persist by Tokyo calendar date and resume across sessions. Option answers are graded server-side; retries are idempotent. Completed activities remain reviewable for the day. SQLite adds `tenant_daily`; Postgres uses an optional `daily` field in the existing transactional account snapshot. No existing saved words are replaced.
+
+`npm run build` builds the self-contained widget before TypeScript. `public/generated/today.html` is generated, ignored by Git and included in the deployment build. The MCP server exposes 25 tools. Native widget audio currently uses available device voices; cloud speech remains available only in the standalone workspace.
+
+Deployment must preserve the existing production database and OAuth owner mapping. Refresh the existing ChatGPT connection after deploying tool changes. The registered production `/mcp` URL and real ChatGPT end-to-end behavior have not yet been verified; local tests are not proof of production connection. `/learn/` labels unauthenticated local data as development data.
+
+## Delivered Sentence Blocks behavior
 
 - Five-question Sentence Blocks sessions with Personal and Hard sample lessons; Japanese prompts, stable shuffled phrase bank, tap to add/remove, uniform 54px answer blocks, wrapping rows, pointer reorder and Alt+arrow keyboard reorder.
 - A 40px insertion gap, frozen drag-start geometry, 14px pointer hysteresis and 180ms FLIP movement. Reduced-motion preferences disable animation.
@@ -52,7 +64,7 @@ npm run test:ui
 
 The backend suite covers legacy persistence, quiz behavior, OAuth boundaries, sentence restart/resume, solution hiding, hint timing, duplicate block identity, retry conflicts, atomic usage scheduling, Postgres concurrency and user isolation. Speech HTTP tests ensure unsolved sentences cannot be requested as full audio.
 
-The Playwright suite runs a separate in-memory backend and exercises all five questions, tap/remove, blank slot geometry, pointer/keyboard reorder, reload, incorrect feedback, hints, speech requests through a device-voice stub, full-width Next, completion, Saved Words history and a narrow mobile layout. It does not alter a real user's vocabulary. Screenshots are written to ignored `test-results/`.
+The Playwright suite runs a separate in-memory backend and exercises all five questions, tap/remove, blank slot geometry, pointer/keyboard reorder, reload, incorrect feedback, hints, speech requests through a device-voice stub, full-width Next, completion, Saved Words history and a narrow mobile layout. An additional iframe host test exercises the real MCP Apps bridge, five-mode menu, persisted choice answers and theme messaging against the isolated backend. It does not alter a real user's vocabulary. Screenshots are written to ignored `test-results/`.
 
 ## Remaining work beyond this MVP
 
@@ -60,7 +72,7 @@ The Playwright suite runs a separate in-memory backend and exercises all five qu
 - Live listening checks of TTS on target devices, native premium provider integrations and distributed speech quotas.
 - A 100–200-pattern curriculum, five-level adaptive progression, validated alternative sentence orders and richer inflection matching.
 - Optional generation from due words, corrections and explicitly supplied conversation topics; the MCP preparation contract is already available.
-- Free-form sentence creation, recording, pronunciation assessment and evidence-based conversation usage. Do not treat listening as speaking evidence.
+- Live ChatGPT validation of generated reading/writing/conversation quality, plus recording and pronunciation assessment. Do not treat listening as speaking evidence.
 - Scheduler execution and ChatGPT push delivery remain host responsibilities. The existing daily quiz state is reused, but this server does not schedule or deliver ChatGPT notifications.
 
 The earlier `docs/product/*` files remain conversation snapshots. This document describes the implemented MVP and supersedes their “unconfirmed” markers for the features above.

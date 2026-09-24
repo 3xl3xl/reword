@@ -96,13 +96,17 @@ export function createApp(service: LearningApi, options: HttpOptions) {
   app.use(express.json({ limit: "64kb" }));
   app.use(
     "/api",
-    learningRouter((owner) => {
-      if (options.oauth) {
-        if (!owner) throw new Error("Unauthorized");
-        return options.serviceForOwner!(owner);
-      }
-      return service;
-    }, options.speech),
+    learningRouter(
+      (owner) => {
+        if (options.oauth) {
+          if (!owner) throw new Error("Unauthorized");
+          return options.serviceForOwner!(owner);
+        }
+        return service;
+      },
+      options.speech,
+      Boolean(options.oauth || options.token),
+    ),
   );
   app.post("/mcp", async (req, res) => {
     let selected = service;
