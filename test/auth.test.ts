@@ -194,7 +194,7 @@ test("OAuth discovery, scope rejection and isolation through real MCP calls", as
     assert.equal((await call(reconnected, "get_learning_words"))[0].id, a.id);
     const today = await call(alice, "start_today_learning");
     assert.equal(today.view, "today");
-    assert.equal(today.data.menu.length, 5);
+    assert.equal(today.data.menu.length, 4);
     const material = await call(alice, "get_learning_material", {
       mode: "writing",
     });

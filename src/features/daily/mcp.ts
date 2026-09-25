@@ -1,3 +1,8 @@
+import {
+  practiceMode,
+  startPracticeSchema,
+  answerPracticeSchema,
+} from "../practice/domain.js";
 import { readFileSync } from "node:fs";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -17,7 +22,7 @@ export function widgetHtml() {
   ));
 }
 const outputSchema = {
-  view: z.enum(["today", "activity", "sentences", "material"]),
+  view: z.enum(["today", "activity", "sentences", "material", "practice"]),
   data: z.record(z.string(), z.unknown()).nullable(),
 };
 const readOnly = {
@@ -40,7 +45,7 @@ const renderMeta = {
   "openai/outputTemplate": WIDGET_URI,
   "openai/widgetAccessible": true,
 };
-export const dailyInstructions = `When the user invokes @reword without a more specific request, or asks for today's study/menu, call start_today_learning immediately. Do not ask which website to open. Show the five modes inside ChatGPT. Use the connected account's authoritative saved words, corrections and history, never local samples or a separate database. Follow an explicit save request instead of showing a menu. For a selected mode: choice uses start_choice_quiz then show_learning_activity; sentences/reading/conversation/writing first call get_learning_material. Resume unfinished work. If none exists, use actual item IDs and context from that result to prepare content, then call show_learning_activity. Sentence Blocks: exactly five Japanese prompts with ordered short phrase blocks; prepare_sentence_blocks. Reading: a 150–250-word passage using saved vocabulary and 3 comprehension questions, each with four distinct plausible options; prepare_learning_activity. Conversation: use the user's chosen theme, or briefly ask for one; prepare 3–5 discussion prompts, adapt your conversational follow-up to actual user answers without inventing personal details. Writing: prepare 3 short personal sentence prompts using saved expressions/corrections. For free answers, get_learning_activity first, wait for the user's own words, then answer_learning_activity with the exact answer, short feedback and only assessed_item_ids actually demonstrated or clearly misused. Use prompted for successful requested usage, recognition for partial demonstrated recognition, incorrect only for clear misuse. An unrelated answer may have assessed_item_ids=[] and must not reward or penalize vocabulary. Do not record_usage again. Never record the model's own examples as user answers. Reading or playback is not proof of pronunciation/speaking. If saved items are missing, say so; do not seed a starter vocabulary. Stay inside ChatGPT; do not send the user to localhost or ask them to paste an access token.`;
+export const dailyInstructions = `When the user invokes @reword without a more specific request, or asks for today's study/menu, call start_today_learning immediately. Do not ask which website to open. Show four primary modes inside ChatGPT: Flashcard, Multiple Choice, Sentence Blocks, Free Recall. Use start_practice/get_practice/answer_practice with mode=flashcard/multiple_choice/sentence_blocks/free_recall. Existing reading/conversation/writing tools remain available for explicit requests. Use the connected account's authoritative saved words, corrections and history, never local samples or a separate database. Follow an explicit save request instead of showing a menu. For a primary mode, call start_practice first to resume or use saved material. If Sentence Blocks needs new material, call get_learning_material(mode=sentences) before prepare_sentence_blocks. For explicit reading/conversation/writing requests, first call get_learning_material. Resume unfinished work. If none exists, use actual item IDs and context from that result to prepare content, then call show_learning_activity. Sentence Blocks: one to five prompts with ordered short phrase blocks; prepare_sentence_blocks; keep saved expressions in one natural chunk, never split them unnaturally. Multiple Choice: start_practice uses saved meanings first. If it returns no activity, read get_learning_material(mode=choice) and supply generated_distractors to start_practice only for missing candidates; use three distinct, plausible but unequivocally incorrect meanings, never synonyms of the correct meaning. Generated choices are not saved as new items. Flashcard: reveal first, then record the user's Know/Don't know selection. Free Recall: reuse start_quiz/get_quiz/answer_quiz for host-assessed equivalence, or start_practice for the interactive exact-normalized interface. Reading: a 150–250-word passage using saved vocabulary and 3 comprehension questions, each with four distinct plausible options; prepare_learning_activity. Conversation: use the user's chosen theme, or briefly ask for one; prepare 3–5 discussion prompts, adapt your conversational follow-up to actual user answers without inventing personal details. Writing: prepare 3 short personal sentence prompts using saved expressions/corrections. For free answers, get_learning_activity first, wait for the user's own words, then answer_learning_activity with the exact answer, short feedback and only assessed_item_ids actually demonstrated or clearly misused. Use prompted for successful requested usage, recognition for partial demonstrated recognition, incorrect only for clear misuse. An unrelated answer may have assessed_item_ids=[] and must not reward or penalize vocabulary. Do not record_usage again. Never record the model's own examples as user answers. Reading or playback is not proof of pronunciation/speaking. If saved items are missing, say so; do not seed a starter vocabulary. Stay inside ChatGPT; do not send the user to localhost or ask them to paste an access token.`;
 export function registerDailyTools(server: McpServer, service: LearningApi) {
   server.registerResource("reword-today", WIDGET_URI, {}, async () => ({
     contents: [
@@ -54,7 +59,7 @@ export function registerDailyTools(server: McpServer, service: LearningApi) {
             csp: { connectDomains: [], resourceDomains: [] },
           },
           "openai/widgetDescription":
-            "Today's five learning modes using this authenticated RE:WORD account's saved vocabulary and progress.",
+            "Four learning modes using this authenticated RE:WORD account's saved vocabulary and progress.",
         },
       },
     ],
@@ -87,11 +92,47 @@ export function registerDailyTools(server: McpServer, service: LearningApi) {
     }
   };
   server.registerTool(
+    "start_practice",
+    {
+      description:
+        "Start or resume Flashcard, Multiple Choice, Sentence Blocks or Free Recall using existing saved items. No items are duplicated. Supply generated distractor meanings only when saved candidates are insufficient; they must be distinct and unambiguously incorrect. Sentence Blocks uses saved examples, otherwise prepare_sentence_blocks with natural chunks. Free Recall preserves the existing quiz slots.",
+      inputSchema: startPracticeSchema.shape,
+      outputSchema,
+      annotations: write,
+      _meta: renderMeta,
+    },
+    (input) => result("practice", () => service.startPractice(input)),
+  );
+  server.registerTool(
+    "get_practice",
+    {
+      description:
+        "Read persisted practice without recording usage; grading answers and unflipped backs are hidden.",
+      inputSchema: { mode: practiceMode },
+      outputSchema,
+      annotations: readOnly,
+      _meta: renderMeta,
+    },
+    (input) => result("practice", () => service.getPractice(input)),
+  );
+  server.registerTool(
+    "answer_practice",
+    {
+      description:
+        "Record the actual learner answer once. Flashcard: reveal, then answer know/dont_know. Multiple Choice: answer with selected option ID after Check. Free Recall: exact typed answer; server grades it. Sentence Blocks: draft/check/next with revision and request_id. Never fabricate responses or call record_usage again.",
+      inputSchema: answerPracticeSchema.shape,
+      outputSchema,
+      annotations: write,
+      _meta: appAccess,
+    },
+    (input) => result("practice", () => service.answerPractice(input)),
+  );
+  server.registerTool(
     "start_today_learning",
     {
       title: "今日のRE:WORD",
       description:
-        "Default entry for @reword or today's study. Show five learning modes and live saved-word/due counts from the authenticated account. Read-only: no sample data, saves or answers are created. Remain inside ChatGPT.",
+        "Default entry for @reword or today's study. Show four learning modes and live saved-word/due counts from the authenticated account. Read-only: no sample data, saves or answers are created. Remain inside ChatGPT.",
       inputSchema: {},
       outputSchema,
       annotations: readOnly,
@@ -171,10 +212,18 @@ export function registerDailyTools(server: McpServer, service: LearningApi) {
       _meta: renderMeta,
     },
     (input) =>
-      result(input.mode === "sentences" ? "sentences" : "activity", () =>
-        input.mode === "sentences"
-          ? service.getSentences()
-          : service.getActivity(input.mode),
+      result(
+        input.mode === "free_recall" || input.mode === "flashcard"
+          ? "practice"
+          : input.mode === "sentences"
+            ? "sentences"
+            : "activity",
+        () =>
+          input.mode === "free_recall" || input.mode === "flashcard"
+            ? service.getPractice({ mode: input.mode })
+            : input.mode === "sentences"
+              ? service.getSentences()
+              : service.getActivity(input.mode),
       ),
   );
 }

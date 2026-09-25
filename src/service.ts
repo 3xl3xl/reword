@@ -1,4 +1,12 @@
 import {
+  practiceMode,
+  startPracticeSchema,
+  answerPracticeSchema,
+  recommendedMode,
+  chunkSentence,
+  assertExpressionChunks,
+} from "./features/practice/domain.js";
+import {
   menu,
   tokyoDay,
   dailyMode,
@@ -75,6 +83,7 @@ export const correctionQuerySchema = z.object({
   offset: z.number().int().min(0).default(0),
 });
 export const usageSchema = z.object({
+  practice_mode: practiceMode.optional(),
   item_id: z.string().uuid(),
   event_id: z.string().uuid(),
   outcome: z.enum([
@@ -256,7 +265,8 @@ export class LearningService {
         if (
           existing.item_id !== data.item_id ||
           existing.outcome !== data.outcome ||
-          existing.context !== data.context
+          existing.context !== data.context ||
+          existing.practice_mode !== data.practice_mode
         )
           throw new Error("event_id already used for a different event.");
         return item;
@@ -325,6 +335,7 @@ export class LearningService {
       const now = this.clock();
       this.repo.put(schedule(item, data.outcome, now));
       this.repo.addEvent({
+        practice_mode: "free_recall",
         event_id: question.id,
         item_id: item.id,
         outcome: data.outcome,
@@ -345,10 +356,16 @@ export class LearningService {
     const data = lessonSchema.parse(input);
     return this.repo.transaction(() => {
       const previous = this.repo.getSentences();
-      if (previous && previous.index < 5) return sentenceView(previous);
+      if (previous && previous.index < previous.questions.length)
+        return sentenceView(previous);
       for (const question of data.questions)
         for (const id of question.item_ids)
           if (!this.repo.find(id)) throw new Error("Learning item not found.");
+      for (const q of data.questions)
+        assertExpressionChunks(
+          q.blocks,
+          q.item_ids.map((id) => this.repo.find(id)!),
+        );
       const session = makeSession(data, this.clock());
       this.repo.putSentences(session);
       return sentenceView(session);
@@ -358,7 +375,8 @@ export class LearningService {
     z.enum(["personal", "hard"]).parse(mode);
     return this.repo.transaction(() => {
       const previous = this.repo.getSentences();
-      if (previous && previous.index < 5) return sentenceView(previous);
+      if (previous && previous.index < previous.questions.length)
+        return sentenceView(previous);
       const questions = lessons[mode].map(([topic, prompt, blocks]) => {
         const sentence = blocks.join(" ");
         const expression = this.saveItem(
@@ -451,6 +469,7 @@ export class LearningService {
                 event_id: randomUUID(),
                 item_id: id,
                 outcome,
+                practice_mode: "sentence_blocks",
                 context: `Sentence Blocks (${session.id}, ${q.id}): ${answer}`,
                 created_at: now.toISOString(),
               });
@@ -478,20 +497,28 @@ export class LearningService {
       stats: this.stats(),
       menu: menu.map((entry) => {
         const activity =
-          entry.id === "sentences"
+          entry.id === "sentences" || entry.id === "free_recall"
             ? null
             : activityView(state?.activities[entry.id]);
         const sentenceDate = this.repo.getSentences()?.created_at.slice(0, 10);
-        const view = entry.id === "sentences" ? sentences : activity;
+        const view =
+          entry.id === "free_recall"
+            ? this.getQuiz()
+            : entry.id === "sentences"
+              ? sentences
+              : activity;
         const active =
           view &&
           (!view.completed ||
-            (activity?.date ??
-              (sentenceDate
-                ? tokyoDay(new Date(this.repo.getSentences()!.created_at))
-                : null)) === today);
-        const available =
-          items.length > 0 && (entry.id !== "choice" || distinct >= 4);
+            (entry.id === "free_recall"
+              ? this.repo.getQuiz()?.slot === quizSlot(this.clock())
+                ? today
+                : null
+              : (activity?.date ??
+                (sentenceDate
+                  ? tokyoDay(new Date(this.repo.getSentences()!.created_at))
+                  : null))) === today);
+        const available = eligible.length > 0;
         return {
           ...entry,
           available: Boolean(active) || available,
@@ -508,7 +535,7 @@ export class LearningService {
             items.length === 0
               ? "保存語がありません。会話で出会った語を保存すると始められます。"
               : entry.id === "choice" && distinct < 4
-                ? "4択には、意味付きの異なる保存語が4つ必要です。"
+                ? "保存語を優先し、不足する選択肢はChatGPTが補います。"
                 : null,
         };
       }),
@@ -528,12 +555,20 @@ export class LearningService {
       )
       .slice(0, 20);
     const existing =
-      mode === "sentences" ? this.getSentences() : this.getActivity(mode);
+      mode === "free_recall"
+        ? this.getQuiz()
+        : mode === "sentences"
+          ? this.getSentences()
+          : this.getActivity(mode);
     return {
       mode,
       topic: topic || null,
       date: tokyoDay(this.clock()),
       items,
+      recommendations: items.map((item) => ({
+        item_id: item.id,
+        practice_mode: recommendedMode(item),
+      })),
       existing,
       empty: items.length === 0,
       instruction:
@@ -544,8 +579,15 @@ export class LearningService {
     activityMode.parse(mode);
     return activityView(this.repo.getDaily()?.activities[mode]);
   }
-  startChoice() {
+  startChoice(
+    generated: z.infer<
+      typeof startPracticeSchema
+    >["generated_distractors"] = [],
+  ) {
     return this.repo.transaction(() => {
+      for (const input of generated ?? [])
+        if (!this.repo.find(input.item_id))
+          throw new Error("Learning item not found.");
       const state = this.repo.getDaily() ?? { activities: {} };
       const now = this.clock();
       const date = tokyoDay(now);
@@ -561,7 +603,6 @@ export class LearningService {
         if (item.meaning_ja || item.meaning_en)
           unique.set(normalize(item.text), item);
       const pool = [...unique.values()];
-      if (pool.length < 4) return null;
       const ordered = pool.sort(
         (a, b) =>
           Number(b.next_review_at <= now.toISOString()) -
@@ -579,11 +620,31 @@ export class LearningService {
             pool.filter(
               (i) =>
                 i.id !== item.id &&
+                !(i.synonyms ?? [])
+                  .map(normalize)
+                  .includes(item.normalized_text) &&
                 !(item.synonyms ?? [])
                   .map(normalize)
                   .includes(i.normalized_text),
             ),
           )
+            .sort((a, b) => {
+              const tokens = (i: Item) =>
+                new Set(
+                  normalize(
+                    [
+                      i.meaning_en,
+                      i.meaning_ja,
+                      i.original_context,
+                      i.category,
+                    ].join(" "),
+                  ).match(/[\p{L}\p{N}]+/gu) ?? [],
+                );
+              const target = tokens(item);
+              const score = (i: Item) =>
+                [...tokens(i)].filter((t) => target.has(t)).length;
+              return score(b) - score(a);
+            })
             .filter((i) => {
               const meaning = normalize(i.meaning_ja || i.meaning_en);
               if (meanings.has(meaning)) return false;
@@ -591,15 +652,32 @@ export class LearningService {
               return true;
             })
             .slice(0, 3);
-          if (distractors.length !== 3) return null;
-          const correct = { id: randomUUID(), text: item.text };
+          const meaningsForOptions = distractors.map(
+            (i) => i.meaning_ja || i.meaning_en,
+          );
+          // The conversation host supplies fallback only when saved candidates are insufficient.
+          for (const meaning of generated?.find((g) => g.item_id === item.id)
+            ?.meanings ?? []) {
+            if (meaningsForOptions.length === 3) break;
+            if (!meanings.has(normalize(meaning))) {
+              meanings.add(normalize(meaning));
+              meaningsForOptions.push(meaning);
+            }
+          }
+          if (meaningsForOptions.length !== 3) return null;
+          const correct = {
+            id: randomUUID(),
+            text: item.meaning_ja || item.meaning_en,
+          };
           return {
             id: randomUUID(),
             item_ids: [item.id],
-            prompt: `「${item.meaning_ja || item.meaning_en}」を表す英語は？`,
+            prompt: `What does "${item.text}" mean?`,
+            front: item.text,
+            example: item.example || "",
             options: shuffle([
               correct,
-              ...distractors.map((i) => ({ id: randomUUID(), text: i.text })),
+              ...meaningsForOptions.map((text) => ({ id: randomUUID(), text })),
             ]),
             expected: correct.id,
           };
@@ -650,20 +728,35 @@ export class LearningService {
       const q = activity.questions.find((q) => q.id === data.question_id);
       if (!q) throw new Error("Question not found.");
       const choice = activity.mode === "choice" || activity.mode === "reading";
-      if (!choice && (!data.outcome || data.assessed_item_ids === undefined))
+      const flashcard = activity.mode === "flashcard";
+      if (
+        flashcard &&
+        (!q.revealed || !["know", "dont_know"].includes(data.answer))
+      )
+        throw new Error("Reveal the card and choose Know or Dont know.");
+      if (
+        !choice &&
+        !flashcard &&
+        (!data.outcome || data.assessed_item_ids === undefined)
+      )
         throw new Error(
           "Assess the actual user answer and specify the observed item IDs (empty if none).",
         );
       if (choice && !q.options?.some((o) => o.id === data.answer))
         throw new Error("Choose a displayed option.");
-      const outcome = choice
-        ? data.answer === q.expected
+      const outcome = flashcard
+        ? data.answer === "know"
           ? "recognition"
           : "incorrect"
-        : data.outcome!;
-      const assessed = choice
-        ? q.item_ids
-        : [...new Set(data.assessed_item_ids!)];
+        : choice
+          ? data.answer === q.expected
+            ? "recognition"
+            : "incorrect"
+          : data.outcome!;
+      const assessed =
+        choice || flashcard
+          ? q.item_ids
+          : [...new Set(data.assessed_item_ids!)];
       if (assessed.some((id) => !q.item_ids.includes(id)))
         throw new Error("Assessment item is not part of this question.");
       if (q.answer !== undefined) {
@@ -686,6 +779,11 @@ export class LearningService {
           event_id: randomUUID(),
           item_id: id,
           outcome,
+          practice_mode: flashcard
+            ? "flashcard"
+            : activity.mode === "choice"
+              ? "multiple_choice"
+              : undefined,
           context: `${activity.mode} (${activity.id}): ${choice ? q.options!.find((o) => o.id === data.answer)!.text : data.answer}`,
           created_at: now.toISOString(),
         });
@@ -694,14 +792,191 @@ export class LearningService {
       q.outcome = outcome;
       q.assessed_item_ids = assessed;
       q.answered_at = now.toISOString();
-      q.feedback = choice
-        ? outcome === "incorrect"
-          ? "Not quite."
-          : "Correct."
-        : data.feedback;
+      q.feedback =
+        choice || flashcard
+          ? outcome === "incorrect"
+            ? "Not quite."
+            : "Correct."
+          : data.feedback;
       this.repo.putDaily(state);
       return activityView(activity);
     });
+  }
+  getPractice(input: { mode: z.infer<typeof practiceMode> }) {
+    const mode = practiceMode.parse(input.mode);
+    if (mode === "free_recall") {
+      const quiz = this.getQuiz();
+      if (!quiz) return { mode, data: null };
+      const { current, ...rest } = quiz;
+      return {
+        mode,
+        data: {
+          ...rest,
+          current: current
+            ? {
+                question_id: current.question_id,
+                number: current.number,
+                prompt: current.prompt,
+              }
+            : null,
+        },
+      };
+    }
+    if (mode === "sentence_blocks") return { mode, data: this.getSentences() };
+    return {
+      mode,
+      data: this.getActivity(
+        mode === "multiple_choice" ? "choice" : "flashcard",
+      ),
+    };
+  }
+  startPractice(input: z.input<typeof startPracticeSchema>) {
+    const data = startPracticeSchema.parse(input);
+    const work = () => {
+      if (data.mode === "free_recall") {
+        if (!this.startQuiz()) return { mode: data.mode, data: null };
+      } else if (data.mode === "multiple_choice") {
+        if (!this.startChoice(data.generated_distractors))
+          return { mode: data.mode, data: null };
+      } else if (data.mode === "sentence_blocks") {
+        const previous = this.repo.getSentences();
+        if (
+          !previous ||
+          (previous.index >= previous.questions.length &&
+            tokyoDay(new Date(previous.created_at)) !== tokyoDay(this.clock()))
+        ) {
+          const questions = this.due(50)
+            .flatMap((item) => {
+              const sentence =
+                item.example || (item.type === "correction" ? item.text : "");
+              if (!sentence || !(item.meaning_ja || item.meaning_en)) return [];
+              const words = (value: string) =>
+                normalize(value)
+                  .replace(/[^\p{L}\p{N}\s']/gu, " ")
+                  .replace(/\s+/g, " ")
+                  .trim();
+              if (!` ${words(sentence)} `.includes(` ${words(item.text)} `))
+                return [];
+              const blocks = chunkSentence(
+                sentence,
+                item.type === "expression" ? item.text : "",
+              );
+              if (
+                blocks.length < 2 ||
+                blocks.length > 40 ||
+                blocks.some((b) => b.length > 200)
+              )
+                return [];
+              return [
+                {
+                  prompt: item.meaning_ja || item.meaning_en,
+                  blocks,
+                  item_ids: [item.id],
+                  topic: "Saved example",
+                },
+              ];
+            })
+            .slice(0, 5);
+          if (questions.length)
+            this.prepareSentences({ mode: "personal", questions });
+          else return { mode: data.mode, data: null };
+        }
+      } else {
+        const state = this.repo.getDaily() ?? { activities: {} };
+        const previous = state.activities.flashcard;
+        const now = this.clock();
+        if (
+          !previous ||
+          (previous.questions.every((q) => q.answer !== undefined) &&
+            previous.date !== tokyoDay(now))
+        ) {
+          const items = this.due(50)
+            .filter((i) => i.meaning_ja || i.meaning_en)
+            .slice(0, 5);
+          if (!items.length) return { mode: data.mode, data: null };
+          state.activities.flashcard = {
+            id: randomUUID(),
+            mode: "flashcard",
+            date: tokyoDay(now),
+            created_at: now.toISOString(),
+            topic: "Saved expressions",
+            questions: items.map((item) => ({
+              id: randomUUID(),
+              prompt: item.text,
+              front: item.text,
+              item_ids: [item.id],
+              revealed: false,
+              back: {
+                meaning: item.meaning_ja || item.meaning_en,
+                example: item.example || "",
+                context: item.original_context,
+              },
+            })),
+          };
+          this.repo.putDaily(state);
+        }
+      }
+      return this.getPractice({ mode: data.mode });
+    };
+    return data.mode === "flashcard" ? this.repo.transaction(work) : work();
+  }
+  answerPractice(input: z.input<typeof answerPracticeSchema>) {
+    const data = answerPracticeSchema.parse(input);
+    const work = () => {
+      if (data.mode === "sentence_blocks") {
+        if (!["draft", "check", "next"].includes(data.action))
+          throw new Error("Use a Sentence Blocks action.");
+        this.sentenceAction(
+          sessionActionSchema.parse({ ...data, action: data.action }),
+        );
+      } else if (data.mode === "free_recall") {
+        if (data.action !== "answer" || !data.answer)
+          throw new Error("Provide your recall answer.");
+        const quiz = this.repo.getQuiz();
+        if (!quiz || quiz.id !== data.session_id)
+          throw new Error("Quiz not found.");
+        const q = quiz.questions.find((q) => q.id === data.question_id);
+        if (!q) throw new Error("Question not found.");
+        // Browser practice is exact-normalized; the legacy quiz API still supports host-assessed equivalents.
+        const clean = (s: string) => normalize(s).replace(/[.!?]+$/, "");
+        this.answerQuiz({
+          quiz_id: quiz.id,
+          question_id: q.id,
+          answer: data.answer,
+          outcome:
+            clean(data.answer) === clean(q.expected) ? "prompted" : "incorrect",
+        });
+      } else {
+        const mode = data.mode === "multiple_choice" ? "choice" : "flashcard";
+        if (data.mode === "flashcard" && data.action === "reveal") {
+          const state = this.repo.getDaily();
+          const activity = state?.activities.flashcard;
+          if (!state || !activity || activity.id !== data.session_id)
+            throw new Error("Activity not found.");
+          const q = activity.questions.find((q) => q.id === data.question_id);
+          if (
+            !q ||
+            activity.questions.find((q) => q.answer === undefined)?.id !== q.id
+          )
+            throw new Error("Reveal the current card first.");
+          q.revealed = true;
+          this.repo.putDaily(state);
+        } else {
+          if (data.action !== "answer" || !data.answer)
+            throw new Error("Choose your answer.");
+          this.answerActivity({
+            mode,
+            activity_id: data.session_id,
+            question_id: data.question_id,
+            answer: data.answer,
+          });
+        }
+      }
+      return this.getPractice({ mode: data.mode });
+    };
+    return data.mode === "flashcard" && data.action === "reveal"
+      ? this.repo.transaction(work)
+      : work();
   }
   healthy() {
     return this.repo.healthy();

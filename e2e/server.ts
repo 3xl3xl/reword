@@ -5,6 +5,12 @@ import { SnapshotRepository } from "../src/storage/snapshot.js";
 const app = createApp(new LearningService(new SnapshotRepository()), {
   allowedHosts: ["127.0.0.1:4318"],
 });
+app.use(
+  "/isolated",
+  createApp(new LearningService(new SnapshotRepository()), {
+    allowedHosts: ["127.0.0.1:4318"],
+  }),
+);
 app.get("/test-host", (_req, res) =>
   res
     .type("html")

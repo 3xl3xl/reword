@@ -6,12 +6,13 @@ export const lessonSchema = z.object({
     .array(
       z.object({
         prompt: z.string().trim().min(1).max(1000),
-        blocks: z.array(z.string().trim().min(1).max(36)).min(2).max(40),
+        blocks: z.array(z.string().trim().min(1).max(200)).min(2).max(40),
         item_ids: z.array(z.string().uuid()).min(1).max(5),
         topic: z.string().trim().max(80).default("Personal practice"),
       }),
     )
-    .length(5),
+    .min(1)
+    .max(5),
 });
 export const sessionActionSchema = z.object({
   session_id: z.string().uuid(),
@@ -82,7 +83,7 @@ export function sentenceView(s?: SentenceSession) {
     session_id: s.id,
     revision: s.revision,
     mode: s.mode,
-    total: 5,
+    total: s.questions.length,
     completed: !q,
     answered: s.questions.filter((q) => q.correct).length,
     first_try: s.questions.filter((q) => q.correct && q.attempts === 1).length,

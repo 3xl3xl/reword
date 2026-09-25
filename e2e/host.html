@@ -15,19 +15,22 @@
       const frame = document.querySelector("iframe");
       let nextId = 1;
       async function tool(name, args = {}) {
-        const response = await fetch("/mcp", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json, text/event-stream",
+        const response = await fetch(
+          location.search.includes("isolated") ? "/isolated/mcp" : "/mcp",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json, text/event-stream",
+            },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: nextId++,
+              method: "tools/call",
+              params: { name, arguments: args },
+            }),
           },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: nextId++,
-            method: "tools/call",
-            params: { name, arguments: args },
-          }),
-        });
+        );
         const result = await response.json();
         if (result.error) throw new Error(result.error.message);
         return result.result;

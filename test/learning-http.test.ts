@@ -36,6 +36,44 @@ test("learning HTTP protects data and solutions; voice only accepts visible cont
     });
   try {
     assert.equal((await fetch(base + "/api/words")).status, 401);
+    assert.equal(
+      (await fetch(base + "/api/practice?mode=flashcard")).status,
+      401,
+    );
+    assert.equal((await request("/api/practice/start")).status, 404);
+    assert.equal(
+      (await request("/api/practice/start", { mode: "invalid" })).status,
+      400,
+    );
+    const flashItem = service.save({
+      type: "expression",
+      text: "work around it",
+      meaning_en: "find another way",
+      example: "We can work around it.",
+    });
+    const flash = await (
+      await request("/api/practice/start", { mode: "flashcard" })
+    ).json();
+    assert.equal(flash.data.current.back, undefined);
+    const action = {
+      mode: "flashcard",
+      session_id: flash.data.activity_id,
+      question_id: flash.data.current.question_id,
+    };
+    assert.equal(
+      (await request("/api/practice/answer", { ...action, answer: "know" }))
+        .status,
+      409,
+    );
+    const flipped = await (
+      await request("/api/practice/answer", { ...action, action: "reveal" })
+    ).json();
+    assert.equal(flipped.data.current.back.meaning, flashItem.meaning_en);
+    await request("/api/practice/answer", { ...action, answer: "know" });
+    await request("/api/practice/answer", { ...action, answer: "know" });
+    assert.equal(service.review(flashItem.id).history.length, 1);
+    const resume = await (await request("/api/practice?mode=flashcard")).json();
+    assert.equal(resume.data.completed, true);
     const page = await fetch(base + "/learn/");
     assert.equal(page.status, 200);
     assert.match(

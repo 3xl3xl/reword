@@ -160,6 +160,44 @@ test("Postgres SQL learning loop, rollback, idempotency and isolated users", asy
       Promise.resolve(bob.answerActivity(readingAnswer)),
       /not found/,
     );
+    const flashItem = await alice.save({
+      type: "word",
+      text: "practice-persistence",
+      meaning_en: "a persisted practice item",
+    });
+    await alice.startPractice({ mode: "flashcard" });
+    const flash = (await alice.getActivity("flashcard"))!;
+    const reveal = {
+      mode: "flashcard" as const,
+      session_id: flash.activity_id,
+      question_id: flash.current!.question_id,
+      action: "reveal" as const,
+    };
+    await alice.answerPractice(reveal);
+    assert.deepEqual(
+      await reopened.getPractice({ mode: "flashcard" }),
+      await alice.getPractice({ mode: "flashcard" }),
+    );
+    await assert.rejects(
+      Promise.resolve(bob.answerPractice(reveal)),
+      /not found/,
+    );
+    const answerFlash = {
+      ...reveal,
+      action: "answer" as const,
+      answer: "know",
+    };
+    const beforeFlash = (await alice.review(flash.current!.item_ids[0]!))
+      .history.length;
+    const answersFlash = await Promise.all([
+      alice.answerPractice(answerFlash),
+      reopened.answerPractice(answerFlash),
+    ]);
+    assert.deepEqual(answersFlash[0], answersFlash[1]);
+    const afterFlash = await alice.review(flash.current!.item_ids[0]!);
+    assert.equal(afterFlash.history.length, beforeFlash + 1);
+    assert.equal(afterFlash.history[0]!.practice_mode, "flashcard");
+    assert.ok((await alice.list(50)).some((i) => i.id === flashItem.id));
     const hosts: string[] = [];
     const token = "test-secret-with-at-least-32-characters";
     const server = createApp(alice, { allowedHosts: hosts, token }).listen(

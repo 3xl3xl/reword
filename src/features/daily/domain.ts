@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Outcome } from "../../domain.js";
 export const modes = [
+  "flashcard",
+  "free_recall",
   "choice",
   "sentences",
   "reading",
@@ -10,6 +12,7 @@ export const modes = [
 ] as const;
 export const dailyMode = z.enum(modes);
 export const activityMode = z.enum([
+  "flashcard",
   "choice",
   "reading",
   "conversation",
@@ -17,45 +20,42 @@ export const activityMode = z.enum([
 ]);
 export const menu = [
   {
+    id: "flashcard",
+    title: "Flashcard",
+    subtitle: "Recognize saved expressions",
+    duration: "2-3 min",
+    icon: "1",
+  },
+  {
     id: "choice",
-    title: "4択クイズ",
-    subtitle: "保存した言葉の意味を思い出す",
-    duration: "2–3分",
-    icon: "①",
+    title: "Multiple Choice",
+    subtitle: "Choose from four meanings",
+    duration: "2-3 min",
+    icon: "2",
   },
   {
     id: "sentences",
-    title: "並べ替え",
-    subtitle: "知っている単語を、使える文に",
-    duration: "5分",
-    icon: "⇄",
+    title: "Sentence Blocks",
+    subtitle: "Build a sentence with your words",
+    duration: "5 min",
+    icon: "3",
   },
   {
-    id: "reading",
-    title: "長文読解",
-    subtitle: "自分の語彙が登場する文章を読む",
-    duration: "5–8分",
-    icon: "≡",
-  },
-  {
-    id: "conversation",
-    title: "テーマ会話",
-    subtitle: "仕事・旅行など、話したいことを英語で",
-    duration: "5–10分",
-    icon: "◇",
-  },
-  {
-    id: "writing",
-    title: "英作文",
-    subtitle: "保存した表現で、自分の文を作る",
-    duration: "3–5分",
-    icon: "✎",
+    id: "free_recall",
+    title: "Free Recall",
+    subtitle: "Recall the English without hints",
+    duration: "3 min",
+    icon: "4",
   },
 ] as const;
 export function tokyoDay(date: Date) {
   return new Date(date.getTime() + 9 * 3600000).toISOString().slice(0, 10);
 }
 export interface ActivityQuestion {
+  front?: string;
+  back?: { meaning: string; example: string; context: string };
+  revealed?: boolean;
+  example?: string;
   id: string;
   prompt: string;
   item_ids: string[];
@@ -183,6 +183,9 @@ export function activityView(activity?: Activity) {
           prompt: q.prompt,
           item_ids: q.item_ids,
           options: q.options,
+          front: q.front,
+          revealed: q.revealed,
+          back: q.revealed ? q.back : undefined,
         }
       : null,
     results: activity.questions
@@ -190,6 +193,11 @@ export function activityView(activity?: Activity) {
       .map((q) => ({
         question_id: q.id,
         answer: q.answer,
+        selected_text:
+          q.options?.find((o) => o.id === q.answer)?.text ?? q.answer,
+        example: q.example ?? q.back?.example,
+        front: q.front,
+        back: q.back,
         outcome: q.outcome,
         feedback: q.feedback,
         expected: q.options?.find((o) => o.id === q.expected)?.text,

@@ -119,6 +119,11 @@ export class AudioController {
     if (sequence === this.sequence && this.enabled)
       await this.browser[method](text);
   }
+  async speakLocal(kind, text) {
+    this.cancel();
+    if (!this.enabled) return;
+    await this.browser[kind === "word" ? "speakWord" : "speakSentence"](text);
+  }
   tone(correct) {
     if (!this.enabled) return;
     try {

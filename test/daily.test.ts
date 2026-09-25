@@ -19,10 +19,10 @@ function seed(service: LearningService) {
     service.save({ text, meaning_ja, type: "word" }),
   );
 }
-test("today menu is read-only, five modes, no fabricated seed data; all choices come from owned saved vocabulary", () => {
+test("today menu is read-only, four modes, no fabricated seed data; all choices come from owned saved vocabulary", () => {
   const repo = new SnapshotRepository();
   const service = new LearningService(repo);
-  assert.equal(service.todayLearning().menu.length, 5);
+  assert.equal(service.todayLearning().menu.length, 4);
   assert.ok(service.todayLearning().menu.every((m) => !m.available));
   assert.equal(service.startChoice(), null);
   assert.equal(service.stats().total, 0);
@@ -36,7 +36,7 @@ test("today menu is read-only, five modes, no fabricated seed data; all choices 
   assert.equal(view.total, 5);
   assert.equal(JSON.stringify(view).includes('"expected"'), false);
   for (const option of view.current!.options!)
-    assert.ok(items.some((i) => i.text === option.text));
+    assert.ok(items.some((i) => i.meaning_ja === option.text));
   const activity = repo.getDaily()!.activities.choice!;
   const q = activity.questions[0]!;
   const answer = {
@@ -58,7 +58,10 @@ test("today menu is read-only, five modes, no fabricated seed data; all choices 
       }),
     /differently/,
   );
-  assert.equal(service.todayLearning().menu[0]!.status, "in_progress");
+  assert.equal(
+    service.todayLearning().menu.find((m) => m.id === "choice")!.status,
+    "in_progress",
+  );
   while (!view.completed) {
     const question = repo
       .getDaily()!
@@ -69,7 +72,10 @@ test("today menu is read-only, five modes, no fabricated seed data; all choices 
       answer: question.expected!,
     })!;
   }
-  assert.equal(service.todayLearning().menu[0]!.status, "completed");
+  assert.equal(
+    service.todayLearning().menu.find((m) => m.id === "choice")!.status,
+    "completed",
+  );
   assert.equal(service.startChoice()!.activity_id, view.activity_id);
 });
 test("daily activities persist, isolate users, resume across midnight and only credit observed free-form usage", () => {

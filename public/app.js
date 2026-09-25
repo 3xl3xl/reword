@@ -1,3 +1,4 @@
+import { PracticeWorkspace } from "./features/practice.js";
 import { Api, escape as e } from "./features/api.js";
 import { AudioController } from "./features/audio.js";
 import { SentenceWorkspace } from "./features/sentences.js";
@@ -37,6 +38,10 @@ async function navigate(tab) {
   });
   root.innerHTML = '<p class="loading">Loading your learning space…</p>';
   try {
+    if (["flashcard", "multiple_choice", "free_recall"].includes(tab)) {
+      workspace = new PracticeWorkspace(root, api, audio, notify, refreshStats);
+      await workspace.load(tab);
+    }
     if (tab === "sentences") {
       workspace = new SentenceWorkspace(root, api, audio, notify, refreshStats);
       await workspace.load();

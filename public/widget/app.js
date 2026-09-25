@@ -1,3 +1,4 @@
+import { PracticeWorkspace } from "../features/practice.js";
 import { App } from "@modelcontextprotocol/ext-apps";
 import { escape as e } from "../features/api.js";
 import { AudioController } from "../features/audio.js";
@@ -34,6 +35,10 @@ async function message(text) {
 }
 const api = {
   async request(path, body) {
+    if (path === "/practice/start")
+      return (await call("start_practice", body)).data;
+    if (path === "/practice/answer")
+      return (await call("answer_practice", body)).data;
     if (path === "/sentences") return await call("get_sentence_blocks");
     if (path === "/sentences/action")
       return await call("answer_sentence_blocks", body);
@@ -50,7 +55,12 @@ function render(result) {
   audio.cancel();
   notify("");
   if (result.view === "today") renderMenu(result.data);
-  else if (result.view === "sentences") {
+  else if (result.view === "practice") {
+    if (result.data.mode === "sentence_blocks")
+      return render({ view: "sentences", data: result.data.data });
+    workspace = new PracticeWorkspace(root, api, audio, notify);
+    workspace.show(result.data);
+  } else if (result.view === "sentences") {
     if (!result.data) {
       notify("並べ替えの教材をChatGPTで準備してください。");
       return;
@@ -64,7 +74,15 @@ function render(result) {
         "RE:WORDの今日の学習メニューを表示してください。start_today_learningを呼んでください。",
       );
     };
-  } else if (result.view === "activity") renderActivity(result.data);
+  } else if (result.view === "activity") {
+    if (result.data?.mode === "choice" || result.data?.mode === "flashcard") {
+      workspace = new PracticeWorkspace(root, api, audio, notify);
+      workspace.show({
+        mode: result.data.mode === "choice" ? "multiple_choice" : "flashcard",
+        data: result.data,
+      });
+    } else renderActivity(result.data);
+  }
 }
 function renderMenu(data) {
   root.innerHTML = `<div class="today-heading"><p class="eyebrow">YOUR WORDS. YOUR DAILY PRACTICE.</p><h1>今日、何を<em>話そう。</em></h1><p class="muted">${e(data.date)} · 復習 ${data.stats.due}語 · 保存 ${data.stats.total}語</p></div><div class="today-menu">${data.menu.map((m) => `<button class="menu-card" data-mode="${m.id}" ${m.available ? "" : "disabled"}><span class="menu-icon">${m.icon}</span><span class="menu-copy"><strong>${m.title}</strong><small>${e(m.reason || m.subtitle)}</small><span class="menu-duration">${m.duration} ${m.status === "completed" ? "· 今日の分は完了 ✓" : m.status === "in_progress" ? `· 続きから ${m.answered}/${m.total}` : ""}</span></span><span>↗</span></button>`).join("")}</div><p class="fine">接続中のRE:WORDの保存語彙・学習履歴を使用します。結果も同じ場所に記録されます。</p><div id="topic-picker"></div>`;
@@ -74,41 +92,18 @@ function renderMenu(data) {
         button.disabled = true;
         const mode = button.dataset.mode;
         try {
-          if (mode === "choice") {
-            const result = await call("start_choice_quiz");
-            if (!result.data) {
-              notify(
-                "4択を作れる保存語が足りません。異なる意味を持つ語を保存してください。",
-              );
-              return;
-            }
-            render(result);
-          } else if (mode === "conversation") {
-            const current = await call("show_learning_activity", { mode });
-            if (current.data) {
-              render(current);
-              return;
-            }
-            root.querySelector("#topic-picker").innerHTML =
-              '<form id="topic-form"><label>何について話しますか？<input name="topic" required maxlength="200" placeholder="仕事、旅行、最近気になったこと…"></label><button class="primary full">このテーマで会話する →</button></form>';
-            root.querySelector("#topic-form").onsubmit = async (event) => {
-              event.preventDefault();
-              const topic = new FormData(event.target).get("topic");
-              try {
-                await askPrepare(mode, topic);
-                notify("ChatGPTで会話を始めます。");
-              } catch (err) {
-                notify(err.message);
-              }
-            };
-          } else {
-            const current = await call("show_learning_activity", { mode });
-            if (current.data) render(current);
-            else {
-              await askPrepare(mode);
-              notify("保存した語彙を使って、ChatGPTで教材を準備します。");
-            }
-          }
+          const practice = {
+            flashcard: "flashcard",
+            choice: "multiple_choice",
+            sentences: "sentence_blocks",
+            free_recall: "free_recall",
+          }[mode];
+          const result = await call("start_practice", { mode: practice });
+          if (result.data.data) render(result);
+          else if (mode === "choice" || mode === "sentences") {
+            await askPrepare(mode);
+            notify("ChatGPTで保存した表現を使って教材を準備します。");
+          } else render(result);
         } catch (error) {
           notify(error.message);
         } finally {
@@ -119,11 +114,16 @@ function renderMenu(data) {
 }
 async function askPrepare(mode, topic) {
   const labels = {
+    choice: "4択クイズ",
     sentences: "並べ替え",
     reading: "長文読解",
     conversation: "テーマ会話",
     writing: "英作文",
   };
+  if (mode === "choice")
+    return message(
+      "保存語の4択を準備してください。get_learning_material(mode=choice)で確認し、保存語だけでは不足する誤答候補に限り、正解と意味の重ならない選択肢を生成してstart_practice(mode=multiple_choice, generated_distractors)を呼んでください。新しいlearning itemは保存しないでください。",
+    );
   await message(
     `RE:WORDの${labels[mode]}を始めたいです。${topic ? `テーマは「${topic}」です。` : ""}get_learning_materialで接続中の保存データを取得し、未完了なら再開してください。新規なら実際の保存語を使って${mode === "sentences" ? "prepare_sentence_blocksで5問" : "prepare_learning_activityで教材"}を準備し、show_learning_activityでChatGPT内に表示してください。サンプル語の追加や外部Webへの誘導は不要です。`,
   );

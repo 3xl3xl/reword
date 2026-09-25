@@ -150,6 +150,6 @@ Tests cover independent success, shortened failure intervals, exposure cooldown,
 
 Next: configure an identity provider and test the full login/consent flow on an HTTPS staging deployment. Semantic relevance can wait until real conversation usage shows where the keyword heuristic falls short. Pronunciation requires an audio-capable evaluation pipeline and is outside V1.
 
-## ChatGPT daily learning
+## ChatGPT learning modes
 
-`@reword` is the default entry to five activities using the connected account’s saved vocabulary: four-choice quiz, Sentence Blocks, reading, themed conversation and writing. The embedded MCP Apps UI shares the existing authenticated learning backend. See [implementation and deployment status](docs/IMPLEMENTATION.md). `/learn/` is the standalone development workspace; local preview data is not production data.
+`@reword` opens Flashcard, Multiple Choice, Sentence Blocks and Free Recall using the connected account's saved vocabulary and shared learning history. See [Learning Modes](docs/LEARNING_MODES.md) for interaction details, additive data changes, APIs and validation. The embedded MCP Apps UI uses the existing authenticated backend; `/learn/` is the standalone diagnostic workspace and local preview data is not production data.

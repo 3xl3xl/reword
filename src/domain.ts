@@ -24,7 +24,10 @@ export interface Item {
   created_at: string;
   updated_at: string;
 }
+export type PracticeMode =
+  "flashcard" | "multiple_choice" | "sentence_blocks" | "free_recall";
 export interface Usage {
+  practice_mode?: PracticeMode;
   event_id: string;
   item_id: string;
   outcome: Outcome;

@@ -1,5 +1,7 @@
 # ChatGPT learning implementation
 
+The current primary modes are Flashcard, Multiple Choice, Sentence Blocks and Free Recall. [Learning Modes](LEARNING_MODES.md) describes the latest changes and supersedes the earlier five-menu design below.
+
 ## Architecture and reuse
 
 The existing TypeScript/Express MCP service remains the single learning backend. `src/service.ts` owns saving, quizzes, usage events, mastery and review scheduling. `src/storage/repository.ts` is its persistence boundary. SQLite serves local installations; Postgres executes the same service against a locked per-owner snapshot. OAuth continues to select the owner. No separate vocabulary database or grading store has been introduced.
@@ -8,19 +10,19 @@ The primary frontend is an embedded MCP Apps widget inside ChatGPT. The same-ori
 
 ## ChatGPT daily entry and production data
 
-Mentioning `@reword` with no further request is described to the host as calling `start_today_learning`. It returns a self-contained MCP Apps resource with five choices: four-choice quiz, Sentence Blocks, reading, themed conversation and writing. Specific save requests keep their existing behavior. Host tool selection must still be verified in a real ChatGPT connection.
+Mentioning `@reword` with no further request is described to the host as calling `start_today_learning`. It returns a self-contained MCP Apps resource with four primary choices: Flashcard, Multiple Choice, Sentence Blocks and Free Recall. Specific save requests keep their existing behavior. Host tool selection must still be verified in a real ChatGPT connection.
 
 The widget calls tools through the MCP Apps bridge using the existing authenticated account. It does not contact localhost, request an access token or seed sample words. Saved vocabulary, usage events and review dates share the existing account repository. Four-choice distractors come from actual saved words; insufficient vocabulary is reported explicitly. Reading, ordering, conversation and writing are prepared by ChatGPT from `get_learning_material` and validated owned item IDs. Topic selection sends an explicit request into the conversation. Free-form answers are assessed by the host using the user's actual answer and only observed vocabulary IDs; listening never counts as speaking.
 
 Daily exercises persist by Tokyo calendar date and resume across sessions. Option answers are graded server-side; retries are idempotent. Completed activities remain reviewable for the day. SQLite adds `tenant_daily`; Postgres uses an optional `daily` field in the existing transactional account snapshot. No existing saved words are replaced.
 
-`npm run build` builds the self-contained widget before TypeScript. `public/generated/today.html` is generated, ignored by Git and included in the deployment build. The MCP server exposes 25 tools. Native widget audio currently uses available device voices; cloud speech remains available only in the standalone workspace.
+`npm run build` builds the self-contained widget before TypeScript. `public/generated/today.html` is generated, ignored by Git and included in the deployment build. The MCP server exposes 28 tools. Native widget audio currently uses available device voices; cloud speech remains available only in the standalone workspace.
 
 Deployment must preserve the existing production database and OAuth owner mapping. Refresh the existing ChatGPT connection after deploying tool changes. The registered production `/mcp` URL and real ChatGPT end-to-end behavior have not yet been verified; local tests are not proof of production connection. `/learn/` labels unauthenticated local data as development data.
 
 ## Delivered Sentence Blocks behavior
 
-- Five-question Sentence Blocks sessions with Personal and Hard sample lessons; Japanese prompts, stable shuffled phrase bank, tap to add/remove, uniform 54px answer blocks, wrapping rows, pointer reorder and Alt+arrow keyboard reorder.
+- Five-question Sentence Blocks sessions with Personal and Hard sample lessons; Japanese prompts, stable shuffled phrase bank, tap to add/remove, answer blocks with a shared 54px minimum height and automatic multiline growth, wrapping rows, pointer reorder and Alt+arrow keyboard reorder.
 - A 40px insertion gap, frozen drag-start geometry, 14px pointer hysteresis and 180ms FLIP movement. Reduced-motion preferences disable animation.
 - Explicit Check; a first incorrect attempt does not reveal a solution. A starting-phrase hint appears after two wrong checks. A full-width Next appears after successful sentence playback (or immediately with voice off/unavailable).
 - Durable drafts, current question, attempts, mode and completion in the user's actual learning state. Revision checks prevent stale tabs from overwriting newer work. The last request ID makes lost-response retries idempotent.
@@ -64,7 +66,7 @@ npm run test:ui
 
 The backend suite covers legacy persistence, quiz behavior, OAuth boundaries, sentence restart/resume, solution hiding, hint timing, duplicate block identity, retry conflicts, atomic usage scheduling, Postgres concurrency and user isolation. Speech HTTP tests ensure unsolved sentences cannot be requested as full audio.
 
-The Playwright suite runs a separate in-memory backend and exercises all five questions, tap/remove, blank slot geometry, pointer/keyboard reorder, reload, incorrect feedback, hints, speech requests through a device-voice stub, full-width Next, completion, Saved Words history and a narrow mobile layout. An additional iframe host test exercises the real MCP Apps bridge, five-mode menu, persisted choice answers and theme messaging against the isolated backend. It does not alter a real user's vocabulary. Screenshots are written to ignored `test-results/`.
+The Playwright suite runs a separate in-memory backend and exercises all five questions, tap/remove, blank slot geometry, pointer/keyboard reorder, reload, incorrect feedback, hints, speech requests through a device-voice stub, full-width Next, completion, Saved Words history and a narrow mobile layout. An additional iframe host test exercises the real MCP Apps bridge, four-mode menu, persisted choice answers and theme messaging against the isolated backend. It does not alter a real user's vocabulary. Screenshots are written to ignored `test-results/`.
 
 ## Remaining work beyond this MVP
 

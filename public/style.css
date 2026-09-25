@@ -317,7 +317,8 @@ h2 {
   margin: auto;
 }
 .block {
-  height: 54px;
+  min-height: 54px;
+  height: auto;
   max-width: 158px;
   min-width: 48px;
   padding: 6px 13px;
@@ -783,11 +784,12 @@ dialog .quiet {
   }
   nav {
     display: flex;
+    flex-wrap: wrap;
     margin: 0;
     gap: 5px;
   }
   .nav {
-    flex: 1;
+    flex: 1 1 30%;
     align-items: center;
     justify-content: center;
     padding: 13px 5px;
@@ -895,7 +897,7 @@ dialog .quiet {
 }
 
 .block {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .data-source {
@@ -905,4 +907,74 @@ dialog .quiet {
   color: #947442;
   font-size: 11px;
   line-height: 1.6;
+}
+
+.flashcard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  min-height: 240px;
+  padding: 32px;
+  border: 1px solid #d4dbcb;
+  border-radius: 14px;
+  background: #fff;
+  color: inherit;
+  text-align: center;
+  justify-content: center;
+  align-items: center;
+  overflow-wrap: anywhere;
+  transition: background 0.2s;
+}
+.flashcard strong {
+  font-size: 24px;
+}
+.flashcard.flipped {
+  background: #edf3e2;
+}
+.choice-options {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+}
+.choice-option {
+  display: flex;
+  gap: 16px;
+  padding: 18px;
+  text-align: left;
+  border: 1px solid #d4dbcb;
+  border-radius: 10px;
+  background: white;
+  color: inherit;
+}
+.choice-option.selected {
+  border: 2px solid #647c45;
+  background: #eef3e5;
+}
+.choice-option.correct-option {
+  border: 2px solid #527b45;
+  background: #edf3e2;
+}
+.choice-option.incorrect-option {
+  border: 2px solid #a86554;
+  background: #f9ece8;
+}
+.choice-option:disabled {
+  opacity: 1;
+}
+#practice-feedback {
+  margin-top: 20px;
+}
+#practice-feedback .full {
+  margin-top: 20px;
+}
+#recall-form label {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+}
+#recall-form input {
+  padding: 16px;
+  font-size: 18px;
+  width: 100%;
 }

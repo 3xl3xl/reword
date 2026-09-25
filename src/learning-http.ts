@@ -1,3 +1,8 @@
+import {
+  practiceMode,
+  startPracticeSchema,
+  answerPracticeSchema,
+} from "./features/practice/domain.js";
 import { Router } from "express";
 import { z } from "zod";
 import type { LearningApi } from "./learning-api.js";
@@ -52,6 +57,14 @@ export function learningRouter(
     const service = select(typeof owner === "string" ? owner : undefined);
     try {
       if (req.method === "GET") {
+        if (req.path === "/practice") {
+          res.json(
+            await service.getPractice({
+              mode: practiceMode.parse(req.query.mode),
+            }),
+          );
+          return;
+        }
         if (req.path === "/words") {
           const offset = z.coerce
             .number()
@@ -80,6 +93,18 @@ export function learningRouter(
       }
       if (req.method !== "POST") {
         next();
+        return;
+      }
+      if (req.path === "/practice/start") {
+        res.json(
+          await service.startPractice(startPracticeSchema.parse(req.body)),
+        );
+        return;
+      }
+      if (req.path === "/practice/answer") {
+        res.json(
+          await service.answerPractice(answerPracticeSchema.parse(req.body)),
+        );
         return;
       }
       if (req.path === "/words") {

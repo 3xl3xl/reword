@@ -48,13 +48,13 @@ export class SentenceWorkspace {
     this.drag?.destroy();
     const s = this.session;
     if (s.completed) {
-      this.root.innerHTML = `<div class="page-heading"><p class="eyebrow">A LITTLE MORE YOURS</p><h1>Keep the <em>words.</em></h1></div><div class="practice-card completion"><div class="complete-mark">✓</div><span class="tag">SESSION COMPLETE</span><h2>5つの文が、自分の言葉に。</h2><p>5 / 5 completed · ${s.first_try} first try</p><p class="muted">練習結果を学習履歴に保存しました。<br>次は、あなたの会話の中で使ってみてください。</p><button id="again" class="primary full">次の練習を選ぶ ↗</button></div>`;
+      this.root.innerHTML = `<div class="page-heading"><p class="eyebrow">A LITTLE MORE YOURS</p><h1>Keep the <em>words.</em></h1></div><div class="practice-card completion"><div class="complete-mark">✓</div><span class="tag">SESSION COMPLETE</span><h2>${s.total}つの文が、自分の言葉に。</h2><p>${s.total} / ${s.total} completed · ${s.first_try} first try</p><p class="muted">練習結果を学習履歴に保存しました。<br>次は、あなたの会話の中で使ってみてください。</p><button id="again" class="primary full">次の練習を選ぶ ↗</button></div>`;
       this.root.querySelector("#again").onclick = () =>
         this.setup().catch((err) => this.notify(err.message));
       return;
     }
     const q = s.current;
-    this.root.innerHTML = `<div class="page-heading"><p class="eyebrow">WORDS YOU KNOW. THOUGHTS YOU OWN.</p><h1>Build your <em>English.</em></h1><p class="intro">単語をつなげて、あなたの言葉に。</p></div><article class="practice-card"><div class="card-top"><span class="tag">SENTENCE BLOCKS <span class="mode-label">${s.mode === "hard" ? "HARD" : "PERSONAL"}</span></span><span class="counter">${q.number} <span>/ 5</span></span></div><progress value="${q.number - 1}" max="5" aria-label="Session progress"></progress><div class="question"><p class="eyebrow">${e(q.topic)} <span> / 日本語を英語に</span></p><h2>${e(q.prompt)}</h2></div><div class="area-caption"><span>YOUR SENTENCE</span><span>タップで戻す・ドラッグで並べ替え</span></div><div class="answer-area" aria-label="Your sentence"></div><div class="area-caption bank-caption"><span>WORD BANK</span><span id="selection-count"></span></div><div class="word-bank"></div><p class="keyboard-hint">キーボード：Tabで選択 · Enterで追加／戻す · Alt＋← →で並べ替え</p><div class="feedback" aria-live="polite"></div><div class="actions sentence-actions"></div></article><p class="under-card"><span class="small-dot"></span> 保存した語彙と、同じ学習履歴につながっています。</p>`;
+    this.root.innerHTML = `<div class="page-heading"><p class="eyebrow">WORDS YOU KNOW. THOUGHTS YOU OWN.</p><h1>Build your <em>English.</em></h1><p class="intro">単語をつなげて、あなたの言葉に。</p></div><article class="practice-card"><div class="card-top"><span class="tag">SENTENCE BLOCKS <span class="mode-label">${s.mode === "hard" ? "HARD" : "PERSONAL"}</span></span><span class="counter">${q.number} <span>/ ${s.total}</span></span></div><progress value="${q.number - 1}" max="${s.total}" aria-label="Session progress"></progress><div class="question"><p class="eyebrow">${e(q.topic)} <span> / 日本語を英語に</span></p><h2>${e(q.prompt)}</h2></div><div class="area-caption"><span>YOUR SENTENCE</span><span>タップで戻す・ドラッグで並べ替え</span></div><div class="answer-area" aria-label="Your sentence"></div><div class="area-caption bank-caption"><span>WORD BANK</span><span id="selection-count"></span></div><div class="word-bank"></div><p class="keyboard-hint">キーボード：Tabで選択 · Enterで追加／戻す · Alt＋← →で並べ替え</p><div class="feedback" aria-live="polite"></div><div class="actions sentence-actions"></div></article><p class="under-card"><span class="small-dot"></span> 保存した語彙と、同じ学習履歴につながっています。</p>`;
     this.area = this.root.querySelector(".answer-area");
     this.drawBlocks();
     this.drawFeedback();
@@ -152,7 +152,7 @@ export class SentenceWorkspace {
         ? `<div class="wrong-feedback"><strong>Almost.</strong> Try changing the word order.${q.hint ? `<p>${e(q.hint)}</p>` : ""}</div>`
         : "";
     this.root.querySelector(".sentence-actions").innerHTML = q.correct
-      ? `<button id="next" class="primary full">${q.number === 5 ? "Finish" : "Next"} <span>→</span></button>`
+      ? `<button id="next" class="primary full">${q.number === this.session.total ? "Finish" : "Next"} <span>→</span></button>`
       : `<button id="reset" class="secondary">Reset</button><button id="check" class="primary" ${this.selected.length !== q.blocks.length || this.busy ? "disabled" : ""}>Check <span>↗</span></button>`;
     if (q.correct) {
       this.root.querySelector("#next").onclick = () => this.next();
