@@ -1,0 +1,153 @@
+body {
+  padding: 18px;
+  background: var(--color-background-primary, #f6f5f0);
+  color: var(--color-text-primary, #283831);
+}
+.widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+.widget-header .logo {
+  font-size: 22px;
+}
+.widget-header > div {
+  display: flex;
+  gap: 6px;
+}
+#content {
+  min-height: 100px;
+}
+h1 {
+  font-size: 38px;
+  letter-spacing: -1px;
+}
+.today-heading {
+  margin-bottom: 24px;
+}
+.today-menu {
+  display: grid;
+  gap: 10px;
+}
+.menu-card {
+  display: flex;
+  text-align: left;
+  gap: 16px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: 12px;
+}
+.menu-card:not(:disabled):hover {
+  background: var(--soft);
+  border-color: #a9bb93;
+}
+.menu-card:disabled {
+  opacity: 0.65;
+}
+.menu-icon {
+  width: 32px;
+  font-size: 25px;
+  color: var(--green);
+}
+.menu-copy {
+  flex: 1;
+}
+.menu-copy strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 500;
+}
+.menu-copy small {
+  display: block;
+  color: var(--muted);
+  line-height: 1.7;
+  margin-top: 6px;
+  font-size: 11px;
+}
+.menu-duration {
+  display: block;
+  font-size: 10px;
+  color: #829168;
+  margin-top: 7px;
+}
+.choice-options {
+  display: grid;
+  gap: 10px;
+  margin: 24px 0;
+}
+.choice-option {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--paper);
+  text-align: left;
+  line-height: 1.7;
+  display: flex;
+  gap: 18px;
+}
+.choice-option span {
+  color: #7b925d;
+}
+.choice-option:hover:not(:disabled) {
+  background: var(--soft);
+}
+.reading-passage {
+  white-space: pre-wrap;
+  font-family: Georgia, serif;
+  line-height: 1.95;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 22px;
+  margin: 22px 0;
+  font-size: 17px;
+}
+.last-result {
+  padding: 14px;
+  border-radius: 8px;
+  background: var(--soft);
+  font-size: 13px;
+}
+.practice-card {
+  padding: 20px;
+  box-shadow: none;
+}
+.page-heading h1 {
+  font-size: 36px;
+}
+#topic-form {
+  margin-top: 22px;
+  display: grid;
+  gap: 12px;
+}
+.keyboard-hint {
+  font-size: 9px;
+}
+@media (max-width: 500px) {
+  body {
+    padding: 12px;
+  }
+  .menu-card {
+    padding: 15px;
+  }
+  .menu-copy strong {
+    font-size: 15px;
+  }
+  h1 {
+    font-size: 32px;
+  }
+  .widget-header .quiet {
+    padding: 8px 10px;
+  }
+  .reading-passage {
+    font-size: 16px;
+    padding: 16px;
+  }
+  .practice-card {
+    padding: 16px 12px;
+  }
+}

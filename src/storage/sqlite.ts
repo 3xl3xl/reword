@@ -1,3 +1,5 @@
+import type { DailyState } from "../features/daily/domain.js";
+import type { SentenceSession } from "../features/sentence-blocks/domain.js";
 import type { Quiz } from "../quiz.js";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
@@ -27,6 +29,12 @@ export class SqliteRepository implements Repository {
     );
     this.db.exec(
       "CREATE TABLE IF NOT EXISTS tenant_quizzes(owner TEXT PRIMARY KEY, data TEXT NOT NULL)",
+    );
+    this.db.exec(
+      "CREATE TABLE IF NOT EXISTS tenant_sentences(owner TEXT PRIMARY KEY, data TEXT NOT NULL)",
+    );
+    this.db.exec(
+      "CREATE TABLE IF NOT EXISTS tenant_daily(owner TEXT PRIMARY KEY,data TEXT NOT NULL)",
     );
     this.transaction(() => {
       if (
@@ -128,6 +136,34 @@ export class SqliteRepository implements Repository {
       )
       .all(this.owner, id)
       .map((row) => this.decode<Usage>(row)!);
+  }
+  getSentences() {
+    return this.decode<SentenceSession>(
+      this.db
+        .prepare("SELECT data FROM tenant_sentences WHERE owner=?")
+        .get(this.owner),
+    );
+  }
+  putSentences(session: SentenceSession) {
+    this.db
+      .prepare(
+        "INSERT INTO tenant_sentences VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET data=excluded.data",
+      )
+      .run(this.owner, JSON.stringify(session));
+  }
+  getDaily() {
+    return this.decode<DailyState>(
+      this.db
+        .prepare("SELECT data FROM tenant_daily WHERE owner=?")
+        .get(this.owner),
+    );
+  }
+  putDaily(state: DailyState) {
+    this.db
+      .prepare(
+        "INSERT INTO tenant_daily VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET data=excluded.data",
+      )
+      .run(this.owner, JSON.stringify(state));
   }
   getQuiz() {
     return this.decode<Quiz>(

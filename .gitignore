@@ -10,3 +10,8 @@ coverage/
 !*.env.example
 backups/
 .vercel
+
+test-results/
+playwright-report/
+
+public/generated/

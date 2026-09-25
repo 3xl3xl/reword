@@ -5,6 +5,8 @@ export interface Item {
   text: string;
   normalized_text: string;
   type: "word" | "expression" | "correction";
+  synonyms?: string[];
+  example?: string;
   meaning_en: string;
   meaning_ja: string;
   original_context: string;
@@ -22,7 +24,10 @@ export interface Item {
   created_at: string;
   updated_at: string;
 }
+export type PracticeMode =
+  "flashcard" | "multiple_choice" | "sentence_blocks" | "free_recall";
 export interface Usage {
+  practice_mode?: PracticeMode;
   event_id: string;
   item_id: string;
   outcome: Outcome;
