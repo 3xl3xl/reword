@@ -192,6 +192,31 @@ test("OAuth discovery, scope rejection and isolation through real MCP calls", as
     assert.equal((await call(bob, "get_learning_words")).length, 1);
     const reconnected = await connect("alice");
     assert.equal((await call(reconnected, "get_learning_words"))[0].id, a.id);
+    const today = await call(alice, "start_today_learning");
+    assert.equal(today.view, "today");
+    assert.equal(today.data.menu.length, 4);
+    const material = await call(alice, "get_learning_material", {
+      mode: "writing",
+    });
+    assert.equal(material.data.items[0].id, a.id);
+    const foreignLesson = await bob.callTool({
+      name: "prepare_learning_activity",
+      arguments: {
+        mode: "writing",
+        topic: "feelings",
+        questions: [{ prompt: "Write with creeping in.", item_ids: [a.id] }],
+      },
+    });
+    assert.equal(foreignLesson.isError, true);
+    const resource = await alice.readResource({
+      uri: "ui://reword/today-v1.html",
+    });
+    assert.equal(resource.contents[0]?.mimeType, "text/html;profile=mcp-app");
+    assert.ok("text" in resource.contents[0]!);
+    assert.equal(
+      JSON.stringify(resource.contents).includes("local secret"),
+      false,
+    );
     assert.equal(local.stats().total, 1);
     assert.equal(local.list()[0]?.text, "local secret");
   } finally {

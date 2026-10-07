@@ -1,3 +1,4 @@
+import { OpenAISpeechProvider } from "./features/audio/speech.js";
 import { SqliteRepository } from "./storage/sqlite.js";
 import { LearningService } from "./service.js";
 import { createOAuth } from "./auth.js";
@@ -46,6 +47,12 @@ const app = createApp(new LearningService(repo), {
   token,
   oauth,
   serviceForOwner: (owner) => new LearningService(repo.forUser(owner)),
+  speech: process.env.OPENAI_API_KEY
+    ? new OpenAISpeechProvider(
+        process.env.OPENAI_API_KEY,
+        process.env.OPENAI_TTS_VOICE,
+      )
+    : undefined,
   allowedHosts,
   allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "")
     .split(",")

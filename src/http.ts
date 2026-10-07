@@ -1,3 +1,6 @@
+import { fileURLToPath } from "node:url";
+import { learningRouter } from "./learning-http.js";
+import type { SpeechProvider } from "./features/audio/speech.js";
 import express from "express";
 import { timingSafeEqual } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -7,6 +10,7 @@ import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middlew
 import type { LearningApi } from "./learning-api.js";
 export interface HttpOptions {
   token?: string;
+  speech?: SpeechProvider;
   oauth?: OAuth;
   serviceForOwner?: (owner: string) => LearningApi;
   allowedHosts: string[];
@@ -25,7 +29,11 @@ export function createApp(service: LearningApi, options: HttpOptions) {
       return;
     }
     const origin = req.headers.origin;
-    if (origin && !(options.allowedOrigins ?? []).includes(origin)) {
+    if (
+      origin &&
+      origin !== `${req.protocol}://${req.headers.host}` &&
+      !(options.allowedOrigins ?? []).includes(origin)
+    ) {
       res.status(403).json({ error: "Origin not allowed" });
       return;
     }
@@ -38,6 +46,19 @@ export function createApp(service: LearningApi, options: HttpOptions) {
       res.status(503).json({ status: "unavailable" });
     }
   });
+  app.use(
+    "/learn",
+    (_req, res, next) => {
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' blob:; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      );
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Referrer-Policy", "no-referrer");
+      next();
+    },
+    express.static(fileURLToPath(new URL("../public", import.meta.url))),
+  );
   if (options.oauth) {
     app.get(
       [
@@ -49,7 +70,7 @@ export function createApp(service: LearningApi, options: HttpOptions) {
       },
     );
     app.use(
-      "/mcp",
+      ["/mcp", "/api"],
       requireBearerAuth({
         verifier: options.oauth.verifier,
         requiredScopes: ["reword"],
@@ -57,7 +78,7 @@ export function createApp(service: LearningApi, options: HttpOptions) {
       }),
     );
   }
-  app.use("/mcp", (req, res, next) => {
+  app.use(["/mcp", "/api"], (req, res, next) => {
     if (options.token) {
       const actual = Buffer.from(req.headers.authorization ?? "");
       const expected = Buffer.from(`Bearer ${options.token}`);
@@ -73,6 +94,20 @@ export function createApp(service: LearningApi, options: HttpOptions) {
     next();
   });
   app.use(express.json({ limit: "64kb" }));
+  app.use(
+    "/api",
+    learningRouter(
+      (owner) => {
+        if (options.oauth) {
+          if (!owner) throw new Error("Unauthorized");
+          return options.serviceForOwner!(owner);
+        }
+        return service;
+      },
+      options.speech,
+      Boolean(options.oauth || options.token),
+    ),
+  );
   app.post("/mcp", async (req, res) => {
     let selected = service;
     if (options.oauth) {
