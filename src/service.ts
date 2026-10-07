@@ -30,6 +30,7 @@ import { quizAnswerSchema, quizSlot, quizView, type Quiz } from "./quiz.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { normalize, schedule, type Item } from "./domain.js";
+import { meaningKey } from "./features/practice/choice-quality.js";
 import type { Repository } from "./storage/repository.js";
 const text = z.string().trim().min(1).max(2000);
 export const saveSchema = z.object({
@@ -613,20 +614,21 @@ export class LearningService {
       const questions = ordered
         .slice(0, 5)
         .map((item) => {
+          const isSynonym = (candidate: Item) =>
+            (candidate.synonyms ?? [])
+              .map(normalize)
+              .includes(item.normalized_text) ||
+            (item.synonyms ?? [])
+              .map(normalize)
+              .includes(candidate.normalized_text);
           const meanings = new Set([
-            normalize(item.meaning_ja || item.meaning_en),
+            meaningKey(item.meaning_ja || item.meaning_en),
+            ...pool
+              .filter(isSynonym)
+              .map((i) => meaningKey(i.meaning_ja || i.meaning_en)),
           ]);
           const distractors = shuffle(
-            pool.filter(
-              (i) =>
-                i.id !== item.id &&
-                !(i.synonyms ?? [])
-                  .map(normalize)
-                  .includes(item.normalized_text) &&
-                !(item.synonyms ?? [])
-                  .map(normalize)
-                  .includes(i.normalized_text),
-            ),
+            pool.filter((i) => i.id !== item.id && !isSynonym(i)),
           )
             .sort((a, b) => {
               const tokens = (i: Item) =>
@@ -646,8 +648,8 @@ export class LearningService {
               return score(b) - score(a);
             })
             .filter((i) => {
-              const meaning = normalize(i.meaning_ja || i.meaning_en);
-              if (meanings.has(meaning)) return false;
+              const meaning = meaningKey(i.meaning_ja || i.meaning_en);
+              if (!meaning || meanings.has(meaning)) return false;
               meanings.add(meaning);
               return true;
             })
@@ -659,8 +661,9 @@ export class LearningService {
           for (const meaning of generated?.find((g) => g.item_id === item.id)
             ?.meanings ?? []) {
             if (meaningsForOptions.length === 3) break;
-            if (!meanings.has(normalize(meaning))) {
-              meanings.add(normalize(meaning));
+            const key = meaningKey(meaning);
+            if (key && !meanings.has(key)) {
+              meanings.add(key);
               meaningsForOptions.push(meaning);
             }
           }
