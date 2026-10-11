@@ -57,6 +57,8 @@ Run `npm run check` and `npm run test:ui`. Tests cover legacy quiz persistence, 
 
 Real ChatGPT tool selection and production-data connection still require deployment to the existing registered MCP endpoint and a connection refresh. This implementation does not prove that a local preview is using production data. Live audio quality is device-dependent and remains a manual check.
 
+Follow [Live Connection Verification](LIVE_CONNECTION_VERIFICATION.md) for the ordered commands, read-only smoke boundary, manual pass criteria, and results record.
+
 Future work: broader semantic distractor quality evaluation, richer language-aware chunking and accepted alternative word orders, adaptive progression informed by mode-specific history, and live ChatGPT integration validation. Existing schedules remain host-driven; no new notification scheduler is introduced.
 
 ### Offline distractor quality regression set
