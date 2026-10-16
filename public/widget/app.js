@@ -58,7 +58,14 @@ function render(result) {
   else if (result.view === "practice") {
     if (result.data.mode === "sentence_blocks")
       return render({ view: "sentences", data: result.data.data });
-    workspace = new PracticeWorkspace(root, api, audio, notify);
+    workspace = new PracticeWorkspace(
+      root,
+      api,
+      audio,
+      notify,
+      async () => {},
+      today,
+    );
     workspace.show(result.data);
   } else if (result.view === "sentences") {
     if (!result.data) {
@@ -76,7 +83,14 @@ function render(result) {
     };
   } else if (result.view === "activity") {
     if (result.data?.mode === "choice" || result.data?.mode === "flashcard") {
-      workspace = new PracticeWorkspace(root, api, audio, notify);
+      workspace = new PracticeWorkspace(
+        root,
+        api,
+        audio,
+        notify,
+        async () => {},
+        today,
+      );
       workspace.show({
         mode: result.data.mode === "choice" ? "multiple_choice" : "flashcard",
         data: result.data,
@@ -85,12 +99,26 @@ function render(result) {
   }
 }
 function renderMenu(data) {
-  root.innerHTML = `<div class="today-heading"><p class="eyebrow">YOUR WORDS. YOUR DAILY PRACTICE.</p><h1>今日、何を<em>話そう。</em></h1><p class="muted">${e(data.date)} · 復習 ${data.stats.due}語 · 保存 ${data.stats.total}語</p></div><div class="today-menu">${data.menu.map((m) => `<button class="menu-card" data-mode="${m.id}" ${m.available ? "" : "disabled"}><span class="menu-icon">${m.icon}</span><span class="menu-copy"><strong>${m.title}</strong><small>${e(m.reason || m.subtitle)}</small><span class="menu-duration">${m.duration} ${m.status === "completed" ? "· 今日の分は完了 ✓" : m.status === "in_progress" ? `· 続きから ${m.answered}/${m.total}` : ""}</span></span><span>↗</span></button>`).join("")}</div><p class="fine">接続中のRE:WORDの保存語彙・学習履歴を使用します。結果も同じ場所に記録されます。</p><div id="topic-picker"></div>`;
-  root.querySelectorAll("[data-mode]").forEach(
+  const plan = data.plan;
+  const next = data.menu.find((entry) => entry.id === plan?.next_mode);
+  const reviewAt = plan?.next_review_at
+    ? new Intl.DateTimeFormat("ja-JP", {
+        timeZone: data.timezone,
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(plan.next_review_at))
+    : null;
+  const planCard = plan
+    ? `<section class="daily-plan" aria-label="今日のプラン"><div class="plan-top"><span class="eyebrow">今日の目標 · 5表現</span><strong>${plan.reviewed} / ${plan.target}</strong></div><progress max="${plan.target}" value="${Math.min(plan.reviewed, plan.target)}" aria-label="今日答えた表現"></progress><div class="plan-stats"><span>意味を確認 <b>${plan.recognized}</b></span><span>自分で使えた <b>${plan.produced}</b></span><span>再確認が必要 <b>${plan.mistakes_due}</b></span></div><p>${e(plan.reason)}</p>${next ? `<button class="primary full" data-start-mode="${next.id}">${next.status === "in_progress" ? "続きから" : "今日のおすすめ"}：${e(next.title)} →</button>` : reviewAt ? `<p class="muted">次の復習 ${e(reviewAt)}（日本時間）</p>` : ""}<small>答えた表現を1日1回カウント。習得数ではありません。各項目は重複する場合があります。</small></section>`
+    : "";
+  root.innerHTML = `<div class="today-heading"><p class="eyebrow">YOUR WORDS. YOUR DAILY PRACTICE.</p><h1>今日、何を<em>話そう。</em></h1><p class="muted">${e(data.date)} · 復習 ${data.stats.due}語 · 保存 ${data.stats.total}語</p></div>${planCard}<h2 class="menu-title">練習を選ぶ</h2><div class="today-menu">${data.menu.map((m) => `<button class="menu-card" data-mode="${m.id}" ${m.available ? "" : "disabled"}><span class="menu-icon">${m.icon}</span><span class="menu-copy"><strong>${e(m.title)}</strong><small>${e(m.reason || m.subtitle)}</small><span class="menu-duration">目安 ${m.duration} ${m.status === "completed" ? "· 今日の分は完了 ✓" : m.status === "in_progress" ? `· 続きから ${m.answered}/${m.total}` : m.status === "waiting" ? "· 次の復習を待っています" : ""}</span></span><span>↗</span></button>`).join("")}</div><p class="fine">結果は同じRE:WORDの学習履歴に記録されます。まず1セットから。</p><div id="topic-picker"></div>`;
+  root.querySelectorAll("[data-mode], [data-start-mode]").forEach(
     (button) =>
       (button.onclick = async () => {
         button.disabled = true;
-        const mode = button.dataset.mode;
+        const mode = button.dataset.mode || button.dataset.startMode;
         try {
           const practice = {
             flashcard: "flashcard",

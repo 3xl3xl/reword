@@ -3,8 +3,15 @@ export class PracticeWorkspace {
   busy = false;
   destroyed = false;
   selected = null;
-  constructor(root, api, audio, notify, onProgress = async () => {}) {
-    Object.assign(this, { root, api, audio, notify, onProgress });
+  constructor(
+    root,
+    api,
+    audio,
+    notify,
+    onProgress = async () => {},
+    onHome = null,
+  ) {
+    Object.assign(this, { root, api, audio, notify, onProgress, onHome });
   }
   async load(mode) {
     this.mode = mode;
@@ -32,13 +39,23 @@ export class PracticeWorkspace {
       return;
     }
     if (d.completed) {
-      this.root.innerHTML = `<div class="practice-card completion"><span class="tag">${labels[this.mode]}</span><h2>今日の復習、完了。</h2><p>${d.answered} / ${d.total} · 同じ学習履歴に保存しました。</p><p>次は会話の中で使ってみてください。</p></div>`;
+      const mistakes = d.results.filter(
+        (result) => result.outcome === "incorrect",
+      );
+      this.root.innerHTML = `<div class="practice-card completion"><span class="tag">${labels[this.mode]}</span><h2>このセット、完了。</h2><p>${d.answered} / ${d.total} · 同じ学習履歴に保存しました。</p>${mistakes.length ? `<h3>もう一度確認する表現</h3><ul class="review-list">${mistakes.map((result) => `<li>${e(result.front || result.expected || "保存した表現")}${result.back?.meaning ? ` — ${e(result.back.meaning)}` : ""}${result.example ? `<small>${e(result.example)}</small>` : ""}</li>`).join("")}</ul><p>復習時刻が来たら優先して出題します。</p>` : "<p>次の復習でも、見ずに思い出せるか確かめましょう。</p>"}${this.onHome ? '<button id="practice-home" class="primary full">今日のプランへ →</button>' : ""}</div>`;
+      this.root
+        .querySelector("#practice-home")
+        ?.addEventListener("click", () => {
+          Promise.resolve(this.onHome()).catch((error) =>
+            this.notify(error.message),
+          );
+        });
       return;
     }
     const q = d.current;
     let content;
     if (this.mode === "flashcard") {
-      content = `<button id="flip" class="flashcard ${q.revealed ? "flipped" : ""}" aria-label="${q.revealed ? "カードの裏面" : "タップして意味を表示"}">${q.revealed ? `<strong>${e(q.back.meaning)}</strong><span>${e(q.back.example)}</span>${q.back.context ? `<small>${e(q.back.context)}</small>` : ""}` : `<strong>${e(q.front)}</strong><small>Tap to flip</small>`}</button><button id="pronounce" class="quiet">${e(q.front)} ♫</button>${q.revealed ? '<div class="actions"><button id="dont-know" class="secondary">Don’t know</button><button id="know" class="primary">Know</button></div>' : ""}`;
+      content = `<button id="flip" class="flashcard ${q.revealed ? "flipped" : ""}" aria-label="${q.revealed ? "カードの裏面" : "タップして意味を表示"}">${q.revealed ? `<strong>${e(q.back.meaning)}</strong><span>${e(q.back.example)}</span>${q.back.context ? `<small>${e(q.back.context)}</small>` : ""}` : `<strong>${e(q.front)}</strong><small>意味を思い出してからタップ · Tap to flip</small>`}</button><button id="pronounce" class="quiet">${e(q.front)} ♫</button>${q.revealed ? '<div class="actions"><button id="dont-know" class="secondary">Don’t know</button><button id="know" class="primary">Know</button></div>' : ""}`;
     } else if (this.mode === "multiple_choice") {
       content = `<h2>${e(q.prompt)}</h2>${q.front ? `<button id="pronounce" class="quiet">${e(q.front)} ♫</button>` : ""}<div class="choice-options">${q.options.map((o, i) => `<button class="choice-option" data-option="${o.id}" aria-pressed="false"><span>${"ABCD"[i]}</span>${e(o.text)}</button>`).join("")}</div><button id="practice-check" class="primary full" disabled>Check</button>`;
     } else {

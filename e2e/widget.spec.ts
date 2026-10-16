@@ -8,6 +8,7 @@ test("ChatGPT bridge displays four modes, explicit Check/Next, flashcard reveal 
   const widget = page.frameLocator("iframe");
   await expect(widget.locator(".menu-card")).toHaveCount(4);
   await expect(widget.locator(".today-heading")).toContainText("今日、何を");
+  await expect(widget.locator(".daily-plan")).toContainText("今日の目標");
   // Seed ONLY the isolated test backend through the real MCP save tools.
   await page.evaluate(async () => {
     const host = window as unknown as {
@@ -52,6 +53,17 @@ test("ChatGPT bridge displays four modes, explicit Check/Next, flashcard reveal 
   await expect(widget.locator('[data-mode="choice"]')).toContainText(
     "続きから",
   );
+  await expect(widget.locator(".daily-plan progress")).toHaveAttribute(
+    "value",
+    "1",
+  );
+  await expect(widget.locator("[data-start-mode]")).toHaveAttribute(
+    "data-start-mode",
+    "choice",
+  );
+  await widget.locator("[data-start-mode]").click();
+  await expect(widget.locator("#content")).toContainText("2 /");
+  await widget.locator("#home").click();
   await widget.locator('[data-mode="flashcard"]').click();
   await expect(widget.locator("#flip")).toContainText("Tap to flip");
   await expect(widget.locator("#know")).toHaveCount(0);

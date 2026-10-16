@@ -1,3 +1,4 @@
+import { dailyPlan, latestAssessment } from "./features/daily/plan.js";
 import {
   practiceMode,
   startPracticeSchema,
@@ -218,6 +219,21 @@ export class LearningService {
       )
       .slice(0, limit);
   }
+  practiceDue() {
+    const due = this.due(Number.MAX_SAFE_INTEGER);
+    const failed = new Set(
+      due
+        .filter(
+          (item) =>
+            latestAssessment(this.repo.history(item.id))?.outcome ===
+            "incorrect",
+        )
+        .map((item) => item.id),
+    );
+    return due.sort(
+      (a, b) => Number(failed.has(b.id)) - Number(failed.has(a.id)),
+    );
+  }
   conversation(topic: string, limit = 3) {
     const tokens = new Set(
       normalize(topic)
@@ -293,7 +309,7 @@ export class LearningService {
           previous.slot === slot)
       )
         return quizView(previous);
-      const items = this.due(50)
+      const items = this.practiceDue()
         .filter((i) => i.meaning_ja || i.meaning_en)
         .slice(0, 3);
       if (!items.length) return null;
@@ -491,55 +507,66 @@ export class LearningService {
     const items = this.repo.list();
     const eligible = items.filter((i) => i.meaning_ja || i.meaning_en);
     const distinct = new Set(eligible.map((i) => normalize(i.text))).size;
+    const entries = menu.map((entry) => {
+      const activity =
+        entry.id === "sentences" || entry.id === "free_recall"
+          ? null
+          : activityView(state?.activities[entry.id]);
+      const sentenceDate = this.repo.getSentences()?.created_at.slice(0, 10);
+      const view =
+        entry.id === "free_recall"
+          ? this.getQuiz()
+          : entry.id === "sentences"
+            ? sentences
+            : activity;
+      const active =
+        view &&
+        (!view.completed ||
+          (entry.id === "free_recall"
+            ? this.repo.getQuiz()?.slot === quizSlot(this.clock())
+              ? today
+              : null
+            : (activity?.date ??
+              (sentenceDate
+                ? tokyoDay(new Date(this.repo.getSentences()!.created_at))
+                : null))) === today);
+      const available = eligible.some(
+        (item) => item.next_review_at <= this.clock().toISOString(),
+      );
+      return {
+        ...entry,
+        available: Boolean(active) || available,
+        status: active
+          ? view!.completed
+            ? "completed"
+            : "in_progress"
+          : available
+            ? "ready"
+            : eligible.length
+              ? "waiting"
+              : "needs_words",
+        answered: active ? view!.answered : 0,
+        total: active ? view!.total : null,
+        reason:
+          items.length === 0
+            ? "保存語がありません。会話で出会った語を保存すると始められます。"
+            : entry.id === "choice" && distinct < 4
+              ? "保存語を優先し、不足する選択肢はChatGPTが補います。"
+              : null,
+      };
+    });
     return {
       date: today,
       timezone: "Asia/Tokyo",
       source: "connected_reword_account",
       stats: this.stats(),
-      menu: menu.map((entry) => {
-        const activity =
-          entry.id === "sentences" || entry.id === "free_recall"
-            ? null
-            : activityView(state?.activities[entry.id]);
-        const sentenceDate = this.repo.getSentences()?.created_at.slice(0, 10);
-        const view =
-          entry.id === "free_recall"
-            ? this.getQuiz()
-            : entry.id === "sentences"
-              ? sentences
-              : activity;
-        const active =
-          view &&
-          (!view.completed ||
-            (entry.id === "free_recall"
-              ? this.repo.getQuiz()?.slot === quizSlot(this.clock())
-                ? today
-                : null
-              : (activity?.date ??
-                (sentenceDate
-                  ? tokyoDay(new Date(this.repo.getSentences()!.created_at))
-                  : null))) === today);
-        const available = eligible.length > 0;
-        return {
-          ...entry,
-          available: Boolean(active) || available,
-          status: active
-            ? view!.completed
-              ? "completed"
-              : "in_progress"
-            : available
-              ? "ready"
-              : "needs_words",
-          answered: active ? view!.answered : 0,
-          total: active ? view!.total : null,
-          reason:
-            items.length === 0
-              ? "保存語がありません。会話で出会った語を保存すると始められます。"
-              : entry.id === "choice" && distinct < 4
-                ? "保存語を優先し、不足する選択肢はChatGPTが補います。"
-                : null,
-        };
-      }),
+      menu: entries,
+      plan: dailyPlan(
+        items,
+        (id) => this.repo.history(id),
+        entries,
+        this.clock(),
+      ),
     };
   }
   learningMaterial(input: { mode: z.infer<typeof dailyMode>; topic?: string }) {
@@ -604,13 +631,8 @@ export class LearningService {
         if (item.meaning_ja || item.meaning_en)
           unique.set(normalize(item.text), item);
       const pool = [...unique.values()];
-      const ordered = pool.sort(
-        (a, b) =>
-          Number(b.next_review_at <= now.toISOString()) -
-            Number(a.next_review_at <= now.toISOString()) ||
-          b.failed_uses - a.failed_uses ||
-          a.mastery_score - b.mastery_score,
-      );
+      const owned = new Set(pool.map((item) => item.id));
+      const ordered = this.practiceDue().filter((item) => owned.has(item.id));
       const questions = ordered
         .slice(0, 5)
         .map((item) => {
@@ -848,7 +870,7 @@ export class LearningService {
           (previous.index >= previous.questions.length &&
             tokyoDay(new Date(previous.created_at)) !== tokyoDay(this.clock()))
         ) {
-          const questions = this.due(50)
+          const questions = this.practiceDue()
             .flatMap((item) => {
               const sentence =
                 item.example || (item.type === "correction" ? item.text : "");
@@ -893,7 +915,7 @@ export class LearningService {
           (previous.questions.every((q) => q.answer !== undefined) &&
             previous.date !== tokyoDay(now))
         ) {
-          const items = this.due(50)
+          const items = this.practiceDue()
             .filter((i) => i.meaning_ja || i.meaning_en)
             .slice(0, 5);
           if (!items.length) return { mode: data.mode, data: null };
