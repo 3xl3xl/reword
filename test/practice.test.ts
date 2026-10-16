@@ -100,7 +100,8 @@ test("flashcards use due items, hide backs, persist reveal/resume, record Know a
 
 test("four unique meaning options, hidden answer, generated fallback only fills missing saved candidates; correct and wrong share progress", () => {
   const repo = new SnapshotRepository();
-  const service = new LearningService(repo);
+  let now = new Date("2026-10-16T00:00:00Z");
+  const service = new LearningService(repo, () => now);
   const a = service.save({
     type: "expression",
     text: "weigh my options",
@@ -149,6 +150,7 @@ test("four unique meaning options, hidden answer, generated fallback only fills 
   assert.equal(service.stats().total, 2);
   view = service.getActivity("choice")!;
   assert.equal(view.results[0]!.example, a.example);
+  now = new Date("2026-10-17T00:00:00Z");
   const state = repo.getDaily()!;
   state.activities.choice!.date = "2000-01-01";
   repo.putDaily(state);
