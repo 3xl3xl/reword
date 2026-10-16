@@ -89,6 +89,20 @@ export class PostgresStore {
       }
     };
     return {
+      startPractice: (...args) => invoke("startPractice", args, true),
+      getPractice: (...args) => invoke("getPractice", args),
+      answerPractice: (...args) => invoke("answerPractice", args, true),
+      getSentences: (...args) => invoke("getSentences", args),
+      prepareSentences: (...args) => invoke("prepareSentences", args, true),
+      startStarterSentences: (...args) =>
+        invoke("startStarterSentences", args, true),
+      sentenceAction: (...args) => invoke("sentenceAction", args, true),
+      todayLearning: (...args) => invoke("todayLearning", args),
+      learningMaterial: (...args) => invoke("learningMaterial", args),
+      getActivity: (...args) => invoke("getActivity", args),
+      startChoice: (...args) => invoke("startChoice", args, true),
+      prepareActivity: (...args) => invoke("prepareActivity", args, true),
+      answerActivity: (...args) => invoke("answerActivity", args, true),
       getQuiz: (...args) => invoke("getQuiz", args),
       startQuiz: (...args) => invoke("startQuiz", args, true),
       answerQuiz: (...args) => invoke("answerQuiz", args, true),

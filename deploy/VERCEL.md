@@ -50,6 +50,8 @@ unset REWORD_SMOKE_TOKEN
 
 Then complete a real client login/consent flow, save an expression, and confirm it survives a redeployment. Repeat with a second account to verify isolation. Automated local tests do not establish live Vercel, Neon, or OAuth-provider connectivity.
 
+The smoke check also discovers the four-mode tools, reads existing practice for each mode, and fetches the MCP Apps HTML resource without changing learning state. It does not render the widget or test real ChatGPT tool selection/audio. Follow the ordered [live connection verification gates](../docs/LIVE_CONNECTION_VERIFICATION.md) before treating this as a verified ChatGPT integration.
+
 ## Storage design and limits
 
 Each authenticated user has one versioned JSONB learning-state document in Postgres. A write inserts the account if needed, locks that user's row with `SELECT ... FOR UPDATE`, runs the existing learning service, and commits the state atomically. Different users have independent rows; retries and concurrent writes for the same user serialize. Reads retrieve one committed snapshot. Connections are checked out for a complete transaction and always released.

@@ -1,3 +1,4 @@
+import { OpenAISpeechProvider } from "./features/audio/speech.js";
 import express from "express";
 import { Pool } from "pg";
 import { createApp } from "./http.js";
@@ -38,6 +39,13 @@ function application() {
   const store = new PostgresStore(pool);
   configured = createApp(store.forUser("local"), {
     oauth,
+    speech: process.env.OPENAI_API_KEY
+      ? new OpenAISpeechProvider(
+          process.env.OPENAI_API_KEY,
+          process.env.OPENAI_TTS_VOICE,
+        )
+      : undefined,
+    allowedOrigins: [new URL(OAUTH_RESOURCE_URL).origin],
     allowedHosts: ALLOWED_HOSTS?.split(",").map((s) => s.trim()) ?? [
       new URL(OAUTH_RESOURCE_URL).host,
     ],

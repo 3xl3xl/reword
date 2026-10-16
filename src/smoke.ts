@@ -1,6 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { pathToFileURL } from "node:url";
+import { practiceMode } from "./features/practice/domain.js";
+import { WIDGET_URI } from "./features/daily/mcp.js";
 
 /** Read-only acceptance check: never saves vocabulary or records learning events. */
 export async function smoke(endpoint: string, token?: string) {
@@ -78,16 +80,50 @@ export async function smoke(endpoint: string, token?: string) {
       "get_words_for_conversation",
       "get_corrections",
       "get_stats",
+      "start_today_learning",
+      "start_practice",
+      "get_practice",
+      "answer_practice",
     ])
       if (!tools.some((tool) => tool.name === name))
         throw new Error(`Missing tool: ${name}`);
     const stats = await client.callTool({ name: "get_stats", arguments: {} });
     if (stats.isError) throw new Error("Authenticated tool call failed.");
+    // Only read existing sessions. Empty accounts are valid; never start practice.
+    for (const mode of practiceMode.options) {
+      const result = await client.callTool({
+        name: "get_practice",
+        arguments: { mode },
+      });
+      const data = result.structuredContent;
+      if (
+        result.isError ||
+        typeof data !== "object" ||
+        data === null ||
+        !("view" in data) ||
+        data.view !== "practice" ||
+        !("data" in data)
+      )
+        throw new Error(`Practice read failed: ${mode}`);
+    }
+    const widget = await client.readResource({ uri: WIDGET_URI });
+    if (
+      !widget.contents.some(
+        (resource) =>
+          resource.uri === WIDGET_URI &&
+          resource.mimeType === "text/html;profile=mcp-app" &&
+          "text" in resource &&
+          resource.text.includes("<html"),
+      )
+    )
+      throw new Error("Practice widget unavailable.");
     return {
       health: "ok",
       mcp: "ok",
       tools: tools.length,
       authenticated: challenge.status === 401,
+      practice_reads: "ok",
+      widget_resource: "ok",
     };
   } finally {
     await client.close();

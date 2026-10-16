@@ -6,6 +6,7 @@ import { smoke } from "../src/smoke.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SqliteRepository } from "../src/storage/sqlite.js";
+import { SnapshotRepository } from "../src/storage/snapshot.js";
 import { LearningService } from "../src/service.js";
 import { createApp } from "../src/http.js";
 import type { AddressInfo } from "node:net";
@@ -27,8 +28,10 @@ test("real Streamable HTTP client completes learning loop and HTTP enforces boun
     assert.deepEqual(await smoke(`${base}/mcp`, token), {
       health: "ok",
       mcp: "ok",
-      tools: 15,
+      tools: 28,
       authenticated: true,
+      practice_reads: "ok",
+      widget_resource: "ok",
     });
     assert.equal(new LearningService(repo).stats().total, 0);
     await assert.rejects(smoke(`${base}/mcp`), /Authentication is required/);
@@ -64,7 +67,7 @@ test("real Streamable HTTP client completes learning loop and HTTP enforces boun
         requestInit: { headers: { Authorization: `Bearer ${token}` } },
       }),
     );
-    assert.equal((await client.listTools()).tools.length, 15);
+    assert.equal((await client.listTools()).tools.length, 28);
     async function call(name: string, args: Record<string, unknown> = {}) {
       const result = await client.callTool({ name, arguments: args });
       assert.ok(!result.isError, JSON.stringify(result));
@@ -124,5 +127,50 @@ test("real Streamable HTTP client completes learning loop and HTTP enforces boun
       server.close((error) => (error ? reject(error) : resolve())),
     );
     repo.close();
+  }
+});
+
+test("smoke reads empty and persisted practice without changing vocabulary, sessions or history", async () => {
+  const repo = new SnapshotRepository();
+  const service = new LearningService(repo);
+  const hosts: string[] = [];
+  const token = "test-secret-with-at-least-32-characters";
+  const server = createApp(service, { token, allowedHosts: hosts }).listen(
+    0,
+    "127.0.0.1",
+  );
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const authority = `127.0.0.1:${(server.address() as AddressInfo).port}`;
+  hosts.push(authority);
+  try {
+    const empty = repo.snapshot();
+    await smoke(`http://${authority}/mcp`, token);
+    assert.deepEqual(repo.snapshot(), empty);
+    for (const [text, meaning_en] of [
+      ["reliable", "easy to trust"],
+      ["depart", "leave a place"],
+      ["rest", "stop working"],
+      ["purchase", "buy an object"],
+    ])
+      service.save({
+        type: "word",
+        text: text!,
+        meaning_en: meaning_en!,
+        example: `I ${text} today.`,
+      });
+    for (const mode of [
+      "flashcard",
+      "multiple_choice",
+      "sentence_blocks",
+      "free_recall",
+    ] as const)
+      service.startPractice({ mode });
+    const persisted = repo.snapshot();
+    const result = await smoke(`http://${authority}/mcp`, token);
+    assert.equal(result.practice_reads, "ok");
+    assert.equal(result.widget_resource, "ok");
+    assert.deepEqual(repo.snapshot(), persisted);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

@@ -104,6 +104,100 @@ test("Postgres SQL learning loop, rollback, idempotency and isolated users", asy
       Promise.resolve(bob.answerQuiz(quizAnswer)),
       /not found/,
     );
+    const [sentence, resumed] = await Promise.all([
+      alice.startStarterSentences("hard"),
+      alice.startStarterSentences("hard"),
+    ]);
+    assert.equal(sentence!.session_id, resumed!.session_id);
+    assert.deepEqual(await reopened.getSentences(), sentence);
+    assert.equal(await bob.getSentences(), null);
+    const sentenceDraft = {
+      session_id: sentence!.session_id,
+      question_id: sentence!.current!.question_id,
+      revision: 0,
+      request_id: randomUUID(),
+      action: "draft" as const,
+      block_ids: [sentence!.current!.blocks[0]!.id],
+    };
+    const [drafted, retried] = await Promise.all([
+      alice.sentenceAction(sentenceDraft),
+      reopened.sentenceAction(sentenceDraft),
+    ]);
+    assert.deepEqual(drafted, retried);
+    assert.equal(drafted!.revision, 1);
+    await assert.rejects(
+      Promise.resolve(bob.sentenceAction(sentenceDraft)),
+      /not found/,
+    );
+    const reading = await alice.prepareActivity({
+      mode: "reading",
+      topic: "Feelings",
+      passage: "Anxiety can be creeping in before a presentation.",
+      questions: [
+        {
+          prompt: "What can be creeping in?",
+          item_ids: [item.id],
+          options: ["Anxiety", "Lunch", "Shoes", "Sunlight"],
+          correct_index: 0,
+        },
+      ],
+    });
+    assert.equal(await bob.getActivity("reading"), null);
+    assert.deepEqual(await reopened.getActivity("reading"), reading);
+    const readingAnswer = {
+      mode: "reading" as const,
+      activity_id: reading!.activity_id,
+      question_id: reading!.current!.question_id,
+      answer: reading!.current!.options!.find((o) => o.text === "Anxiety")!.id,
+    };
+    const [firstReading, sameReading] = await Promise.all([
+      alice.answerActivity(readingAnswer),
+      reopened.answerActivity(readingAnswer),
+    ]);
+    assert.deepEqual(firstReading, sameReading);
+    assert.equal(firstReading!.answered, 1);
+    await assert.rejects(
+      Promise.resolve(bob.answerActivity(readingAnswer)),
+      /not found/,
+    );
+    const flashItem = await alice.save({
+      type: "word",
+      text: "practice-persistence",
+      meaning_en: "a persisted practice item",
+    });
+    await alice.startPractice({ mode: "flashcard" });
+    const flash = (await alice.getActivity("flashcard"))!;
+    const reveal = {
+      mode: "flashcard" as const,
+      session_id: flash.activity_id,
+      question_id: flash.current!.question_id,
+      action: "reveal" as const,
+    };
+    await alice.answerPractice(reveal);
+    assert.deepEqual(
+      await reopened.getPractice({ mode: "flashcard" }),
+      await alice.getPractice({ mode: "flashcard" }),
+    );
+    await assert.rejects(
+      Promise.resolve(bob.answerPractice(reveal)),
+      /not found/,
+    );
+    const answerFlash = {
+      ...reveal,
+      action: "answer" as const,
+      answer: "know",
+    };
+    const beforeFlash = (await alice.review(flash.current!.item_ids[0]!))
+      .history.length;
+    const answersFlash = await Promise.all([
+      alice.answerPractice(answerFlash),
+      reopened.answerPractice(answerFlash),
+    ]);
+    assert.deepEqual(answersFlash[0], answersFlash[1]);
+    const afterFlash = await alice.review(flash.current!.item_ids[0]!);
+    assert.equal(afterFlash.history.length, beforeFlash + 1);
+    assert.equal(afterFlash.history[0]!.practice_mode, "flashcard");
+    assert.ok((await alice.list(50)).some((i) => i.id === flashItem.id));
     const hosts: string[] = [];
     const token = "test-secret-with-at-least-32-characters";
     const server = createApp(alice, { allowedHosts: hosts, token }).listen(
